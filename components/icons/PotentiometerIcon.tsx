@@ -5,6 +5,7 @@ interface PotentiometerIconProps extends React.SVGProps<SVGSVGElement> {
 }
 
 export const PotentiometerIcon: React.FC<PotentiometerIconProps> = ({ value = 512, className, ...props }) => {
+  // Map value from 0-1023 to a rotation angle from -135 to 135 degrees
   const rotation = ((value / 1023) * 270) - 135;
 
   return (
