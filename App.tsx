@@ -3,7 +3,7 @@ import { CodeEditor } from './components/CodeEditor';
 import { Breadboard } from './components/Breadboard';
 import { SerialMonitor } from './components/SerialMonitor';
 import { Controls } from './components/Controls';
-import { AddComponentModal } from './components/AddComponentModal';
+import { ComponentPalette } from './components/ComponentPalette';
 import { ArduinoComponent, SerialLog, ComponentType, Wire, Point } from './types';
 import { generateCodeFromPrompt } from './services/geminiService';
 
@@ -41,7 +41,6 @@ function App() {
   const [logs, setLogs] = useState<SerialLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const stopSimulation = useCallback(() => {
@@ -58,7 +57,6 @@ function App() {
     setLogs([{ timestamp: Date.now(), message: "Simulation started." }]);
 
     // This is a very basic mock simulation for the default "Blink" example.
-    // A real implementation would require a JavaScript Arduino emulator like avr8js.
     if (code.includes('pinMode(13, OUTPUT)') && code.includes('digitalWrite(13, HIGH)')) {
       simulationIntervalRef.current = setInterval(() => {
         setComponents(prev => prev.map(c => c.pin === 13 && c.type === 'led' ? {...c, isOn: !c.isOn} : c));
@@ -118,21 +116,20 @@ function App() {
     }
   };
 
-  const handleAddComponent = (type: ComponentType, pin: number, label: string) => {
+  const handleDropComponent = (type: ComponentType, position: Point) => {
     const newComponent: ArduinoComponent = {
         id: `${type}-${Date.now()}`,
         type,
-        pin,
-        label,
-        x: 100,
-        y: 280,
+        pin: 0, // Default pin, can be changed by wiring
+        label: `New ${type}`,
+        x: position.x,
+        y: position.y,
         ...(type === 'led' && { isOn: false }),
         ...(type === 'button' && { isPressed: false }),
         ...(type === 'potentiometer' && { value: 0 }),
         ...(type === 'servo' && { value: 0 }),
     };
     setComponents(prev => [...prev, newComponent]);
-    setIsModalOpen(false);
   };
 
   const handleComponentUpdate = (id: string, updates: Partial<ArduinoComponent>) => {
@@ -190,17 +187,8 @@ function App() {
           </div>
         </div>
 
-        <div className="lg:col-span-7 flex flex-col gap-4 min-h-0">
-          <div className="flex justify-between items-center bg-slate-800/50 rounded-lg p-4 border border-slate-700 shadow-lg">
-            <h2 className="text-xl font-bold text-cyan-400">2. Build Your Circuit</h2>
-            <button
-                onClick={() => setIsModalOpen(true)}
-                disabled={isSimulating}
-                className="px-4 py-2 bg-cyan-500 text-white font-bold rounded-md shadow-lg hover:bg-cyan-600 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all text-sm"
-            >
-                + Add Component
-            </button>
-          </div>
+        <div className="lg:col-span-7 flex gap-4 min-h-0">
+          <ComponentPalette />
           <div className="flex-grow min-h-[400px]">
             <Breadboard
               components={components}
@@ -208,6 +196,7 @@ function App() {
               onComponentUpdate={handleComponentUpdate}
               onAddWire={handleAddWire}
               onDeleteWire={handleDeleteWire}
+              onDropComponent={handleDropComponent}
               isSimulating={isSimulating}
               arduinoPosition={arduinoPosition}
               onArduinoPositionUpdate={handleArduinoPositionUpdate}
@@ -215,8 +204,6 @@ function App() {
           </div>
         </div>
       </main>
-
-      {isModalOpen && <AddComponentModal onAddComponent={handleAddComponent} onClose={() => setIsModalOpen(false)} />}
     </div>
   );
 }

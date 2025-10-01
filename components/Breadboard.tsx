@@ -1,5 +1,4 @@
-
-import React, { useState, MouseEvent, useMemo, useRef } from 'react';
+import React, { useState, MouseEvent, useMemo, useRef, DragEvent } from 'react';
 import { ArduinoComponent, Wire, Point, Terminal, ComponentType } from '../types';
 import { ArduinoBoard, allPins as arduinoPins } from './ArduinoBoard';
 import { LedIcon } from './icons/LedIcon';
@@ -14,6 +13,7 @@ interface BreadboardProps {
   onComponentUpdate: (id: string, updates: Partial<ArduinoComponent>) => void;
   onAddWire: (wire: Omit<Wire, 'id'>) => void;
   onDeleteWire: (id: string) => void;
+  onDropComponent: (type: ComponentType, position: Point) => void;
   isSimulating: boolean;
   arduinoPosition: Point;
   onArduinoPositionUpdate: (newPosition: Point) => void;
@@ -55,6 +55,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   onComponentUpdate,
   onAddWire,
   onDeleteWire,
+  onDropComponent,
   isSimulating,
   arduinoPosition,
   onArduinoPositionUpdate,
@@ -63,7 +64,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   const [draggingInfo, setDraggingInfo] = useState<{ id: string; type: 'component' | 'arduino'; offset: Point } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const getSVGPoint = (e: MouseEvent): Point => {
+  const getSVGPoint = (e: MouseEvent | DragEvent): Point => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
 
@@ -72,6 +73,23 @@ export const Breadboard: React.FC<BreadboardProps> = ({
     pt.y = e.clientY;
     const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
     return { x: transformed.x, y: transformed.y };
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    e.preventDefault();
+    const type = e.dataTransfer.getData('componentType') as ComponentType;
+    if (type) {
+        const point = getSVGPoint(e);
+        const dimensions = componentDimensions[type];
+        // Adjust drop position to center the component on the cursor
+        const x = dimensions ? point.x - dimensions.width / 2 : point.x;
+        const y = dimensions ? point.y - dimensions.height / 2 : point.y;
+        onDropComponent(type, { x, y });
+    }
   };
 
   const handleMouseDownOnPin = (e: MouseEvent, componentId: string, terminalId: string) => {
@@ -217,6 +235,8 @@ export const Breadboard: React.FC<BreadboardProps> = ({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
         >
             <defs>
                 <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
