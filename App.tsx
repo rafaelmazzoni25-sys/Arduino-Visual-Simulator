@@ -4,6 +4,7 @@ import { Breadboard } from './components/Breadboard';
 import { SerialMonitor } from './components/SerialMonitor';
 import { Controls } from './components/Controls';
 import { ComponentPalette } from './components/ComponentPalette';
+import { EditComponentModal } from './components/EditComponentModal';
 import { ArduinoComponent, SerialLog, ComponentType, Wire, Point } from './types';
 import { generateCodeFromPrompt } from './services/geminiService';
 
@@ -41,6 +42,7 @@ function App() {
   const [logs, setLogs] = useState<SerialLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingComponent, setEditingComponent] = useState<ArduinoComponent | null>(null);
   const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const stopSimulation = useCallback(() => {
@@ -134,6 +136,7 @@ function App() {
 
   const handleComponentUpdate = (id: string, updates: Partial<ArduinoComponent>) => {
     setComponents(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    setEditingComponent(prev => prev ? { ...prev, ...updates } : null);
   };
   
   const handleArduinoPositionUpdate = (newPosition: Point) => {
@@ -147,6 +150,22 @@ function App() {
   const handleDeleteWire = (id: string) => {
     setWires(prev => prev.filter(w => w.id !== id));
   };
+
+  const handleEditComponent = useCallback((componentId: string) => {
+    const componentToEdit = components.find(c => c.id === componentId);
+    setEditingComponent(componentToEdit || null);
+  }, [components]);
+
+  const handleCloseEditModal = () => {
+    setEditingComponent(null);
+  };
+  
+  const handleDeleteComponent = (id: string) => {
+    setComponents(prev => prev.filter(c => c.id !== id));
+    setWires(prev => prev.filter(w => w.start.componentId !== id && w.end.componentId !== id));
+    handleCloseEditModal();
+  };
+
 
   return (
     <div className="bg-slate-900/50 text-slate-100 min-h-screen font-sans flex flex-col p-4 gap-4 max-w-screen-2xl mx-auto w-full">
@@ -197,6 +216,7 @@ function App() {
               onAddWire={handleAddWire}
               onDeleteWire={handleDeleteWire}
               onDropComponent={handleDropComponent}
+              onComponentDoubleClick={handleEditComponent}
               isSimulating={isSimulating}
               arduinoPosition={arduinoPosition}
               onArduinoPositionUpdate={handleArduinoPositionUpdate}
@@ -204,6 +224,14 @@ function App() {
           </div>
         </div>
       </main>
+      {editingComponent && (
+        <EditComponentModal
+            component={editingComponent}
+            onClose={handleCloseEditModal}
+            onUpdate={handleComponentUpdate}
+            onDelete={handleDeleteComponent}
+        />
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ interface BreadboardProps {
   onAddWire: (wire: Omit<Wire, 'id'>) => void;
   onDeleteWire: (id: string) => void;
   onDropComponent: (type: ComponentType, position: Point) => void;
+  onComponentDoubleClick: (id: string) => void;
   isSimulating: boolean;
   arduinoPosition: Point;
   onArduinoPositionUpdate: (newPosition: Point) => void;
@@ -56,6 +57,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   onAddWire,
   onDeleteWire,
   onDropComponent,
+  onComponentDoubleClick,
   isSimulating,
   arduinoPosition,
   onArduinoPositionUpdate,
@@ -172,6 +174,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
     const commonProps = {
         key: component.id,
         onMouseDown: (e: MouseEvent) => handleMouseDownOnComponent(e, component.id),
+        onDoubleClick: () => onComponentDoubleClick(component.id),
         className: `cursor-grab ${isSimulating ? 'cursor-not-allowed' : ''}`,
         transform: `translate(${component.x || 0}, ${component.y || 0})`
     };
