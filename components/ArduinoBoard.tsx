@@ -35,79 +35,83 @@ const powerPins: Pin[] = [
     { id: '5v', x: 244, y: 226, label: '5V', labelYOffset: -8},
 ];
 
-const allPins = [...digitalPins, ...powerPins];
-
-export const getPinPosition = (pinId: string): {x: number, y: number} | null => {
-    const pin = allPins.find(p => p.id === pinId);
-    if(pin) {
-        return { x: pin.x + 6, y: pin.y + 6 }; // Center of the pin rect
-    }
-    return null;
-};
+export const allPins = [...digitalPins, ...powerPins];
 
 interface ArduinoBoardProps {
-    onPinClick: (pinId: string) => void;
-    selectedPin: string | null;
+    x: number;
+    y: number;
     onPinMouseDown: (e: React.MouseEvent, pinId: string) => void;
     onPinMouseUp: (e: React.MouseEvent, pinId: string) => void;
+    onBoardMouseDown: (e: React.MouseEvent) => void;
 }
 
-export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ onPinClick, selectedPin, onPinMouseDown, onPinMouseUp }) => {
+export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ x, y, onPinMouseDown, onPinMouseUp, onBoardMouseDown }) => {
   return (
-    <svg viewBox="0 0 550 300" className="w-full h-auto">
-      {/* Base board */}
-      <rect x="50" width="450" height="230" rx="10" fill="#009999" />
-      <rect x="65" y="15" width="420" height="200" rx="5" fill="#008a8a" />
+    <g transform={`translate(${x}, ${y})`} className="cursor-grab">
+      <svg viewBox="0 0 550 300" width="550" height="300">
+        {/* Base board with drag handler */}
+        <rect 
+          x="50" 
+          width="450" 
+          height="230" 
+          rx="10" 
+          fill="#009999" 
+          onMouseDown={onBoardMouseDown}
+        />
+        <rect x="65" y="15" width="420" height="200" rx="5" fill="#008a8a" className="pointer-events-none" />
 
-      {/* USB Port */}
-      <rect x="100" y="80" width="50" height="50" fill="#E5E7EB" />
-      <rect x="105" y="85" width="40" height="40" fill="#4B5563" />
+        {/* Decorative elements */}
+        <g className="pointer-events-none">
+          {/* USB Port */}
+          <rect x="100" y="80" width="50" height="50" fill="#E5E7EB" />
+          <rect x="105" y="85" width="40" height="40" fill="#4B5563" />
 
-      {/* Power Jack */}
-      <circle cx="125" cy="170" r="15" fill="#4B5563" />
-      <circle cx="125" cy="170" r="8" fill="#1F2937" />
+          {/* Power Jack */}
+          <circle cx="125" cy="170" r="15" fill="#4B5563" />
+          <circle cx="125" cy="170" r="8" fill="#1F2937" />
 
-      {/* Main Chip */}
-      <rect x="230" y="80" width="90" height="90" fill="#374151" />
-      <text x="275" y="120" textAnchor="middle" fill="#9CA3AF" fontSize="12" className="font-mono">ATmega328P</text>
-      
-      {/* Reset Button */}
-      <rect x="160" y="65" width="15" height="15" rx="2" fill="#DC2626" />
+          {/* Main Chip */}
+          <rect x="230" y="80" width="90" height="90" fill="#374151" />
+          <text x="275" y="120" textAnchor="middle" fill="#9CA3AF" fontSize="12" className="font-mono">ATmega328P</text>
+          
+          {/* Reset Button */}
+          <rect x="160" y="65" width="15" height="15" rx="2" fill="#DC2626" />
+        </g>
+        
+        {/* Pin Headers */}
+        <g transform="translate(50, 0)">
+          <rect x="170" y="0" width="225" height="20" fill="#1F2937" />
+          <rect x="170" y="210" width="170" height="20" fill="#1F2937" />
 
-      {/* Pin Headers */}
-      <g transform="translate(50, 0)">
-        <rect x="170" y="0" width="225" height="20" fill="#1F2937" />
-        <rect x="170" y="210" width="170" height="20" fill="#1F2937" />
-
-        {/* Render all pins */}
-        {allPins.map(pin => (
-          <g key={pin.id} transform={`translate(${pin.x}, ${pin.y})`}>
-            <rect
-              x="0"
-              y="0"
-              width="12"
-              height="12"
-              fill={selectedPin === pin.id ? '#67E8F9' : '#9CA3AF'}
-              className="cursor-crosshair transition-all"
-              onClick={() => onPinClick(pin.id)}
-              onMouseDown={(e) => onPinMouseDown(e, pin.id)}
-              onMouseUp={(e) => onPinMouseUp(e, pin.id)}
-            />
-            {pin.label && (
-              <text
-                  x="6"
-                  y={pin.labelYOffset || 22}
-                  textAnchor="middle"
-                  fill="#E5E7EB"
-                  fontSize="10"
-                  className="font-mono select-none pointer-events-none"
-              >
-                  {pin.label}
-              </text>
-            )}
-          </g>
-        ))}
-      </g>
-    </svg>
+          {/* Render all pins */}
+          {allPins.map(pin => (
+            <g key={pin.id} transform={`translate(${pin.x}, ${pin.y})`}>
+              <rect
+                x="0"
+                y="0"
+                width="12"
+                height="12"
+                fill={'#9CA3AF'}
+                className="cursor-crosshair transition-all hover:fill-cyan-300"
+                onMouseDown={(e) => { e.stopPropagation(); onPinMouseDown(e, pin.id); }}
+                onMouseUp={(e) => { e.stopPropagation(); onPinMouseUp(e, pin.id); }}
+              />
+              {pin.label && (
+                <text
+                    x="6"
+                    y={pin.labelYOffset || 22}
+                    textAnchor="middle"
+                    fill="#E5E7EB"
+                    fontSize="10"
+                    className="font-mono select-none pointer-events-none"
+                >
+                    {pin.label}
+                </text>
+              )}
+            </g>
+          ))}
+        </g>
+      </svg>
+    </g>
   );
 };

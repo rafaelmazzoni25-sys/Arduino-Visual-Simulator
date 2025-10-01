@@ -4,7 +4,7 @@ import { Breadboard } from './components/Breadboard';
 import { SerialMonitor } from './components/SerialMonitor';
 import { Controls } from './components/Controls';
 import { AddComponentModal } from './components/AddComponentModal';
-import { ArduinoComponent, SerialLog, ComponentType, Wire } from './types';
+import { ArduinoComponent, SerialLog, ComponentType, Wire, Point } from './types';
 import { generateCodeFromPrompt } from './services/geminiService';
 
 const DEFAULT_CODE = `/*
@@ -35,6 +35,7 @@ function App() {
     { id: 'led-1', type: 'led', pin: 13, label: 'L LED', isOn: false, x: 100, y: 280 },
     { id: 'resistor-1', type: 'resistor', pin: 13, label: '220Ω Resistor', x: 250, y: 280 },
   ]);
+  const [arduinoPosition, setArduinoPosition] = useState<Point>({ x: 350, y: 50 });
   const [wires, setWires] = useState<Wire[]>([]);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [logs, setLogs] = useState<SerialLog[]>([]);
@@ -96,6 +97,7 @@ function App() {
         { id: 'led-1', type: 'led', pin: 13, label: 'L LED', isOn: false, x: 100, y: 280 },
         { id: 'resistor-1', type: 'resistor', pin: 13, label: '220Ω Resistor', x: 250, y: 280 },
     ]);
+    setArduinoPosition({ x: 350, y: 50 });
     setWires([]);
     setPrompt('');
     setError(null);
@@ -137,6 +139,10 @@ function App() {
     setComponents(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
   
+  const handleArduinoPositionUpdate = (newPosition: Point) => {
+    setArduinoPosition(newPosition);
+  };
+
   const handleAddWire = (wire: Omit<Wire, 'id'>) => {
     setWires(prev => [...prev, { ...wire, id: `wire-${Date.now()}` }]);
   };
@@ -179,36 +185,38 @@ function App() {
           <div className="flex-grow min-h-[300px]">
             <CodeEditor code={code} onChange={setCode} disabled={isSimulating} />
           </div>
+          <div className="min-h-[200px]">
+            <SerialMonitor logs={logs} />
+          </div>
         </div>
 
         <div className="lg:col-span-7 flex flex-col gap-4 min-h-0">
-           <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-cyan-400">2. Wire Components &amp; Run</h2>
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="px-4 py-2 bg-slate-600 text-white font-bold rounded-md shadow-lg hover:bg-slate-700 transition-all disabled:bg-slate-600 disabled:cursor-not-allowed"
-                    disabled={isSimulating}
-                >
-                    + Add Component
-                </button>
-            </div>
-          <div className="flex-grow-[3] min-h-[400px]">
-            <Breadboard 
-              components={components} 
+          <div className="flex justify-between items-center bg-slate-800/50 rounded-lg p-4 border border-slate-700 shadow-lg">
+            <h2 className="text-xl font-bold text-cyan-400">2. Build Your Circuit</h2>
+            <button
+                onClick={() => setIsModalOpen(true)}
+                disabled={isSimulating}
+                className="px-4 py-2 bg-cyan-500 text-white font-bold rounded-md shadow-lg hover:bg-cyan-600 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all text-sm"
+            >
+                + Add Component
+            </button>
+          </div>
+          <div className="flex-grow min-h-[400px]">
+            <Breadboard
+              components={components}
               wires={wires}
-              onComponentUpdate={handleComponentUpdate} 
+              onComponentUpdate={handleComponentUpdate}
               onAddWire={handleAddWire}
               onDeleteWire={handleDeleteWire}
               isSimulating={isSimulating}
+              arduinoPosition={arduinoPosition}
+              onArduinoPositionUpdate={handleArduinoPositionUpdate}
             />
-          </div>
-          <div className="flex-grow min-h-[150px]">
-             <SerialMonitor logs={logs} />
           </div>
         </div>
       </main>
-      
-      {isModalOpen && <AddComponentModal onClose={() => setIsModalOpen(false)} onAddComponent={handleAddComponent} />}
+
+      {isModalOpen && <AddComponentModal onAddComponent={handleAddComponent} onClose={() => setIsModalOpen(false)} />}
     </div>
   );
 }

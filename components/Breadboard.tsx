@@ -1,7 +1,7 @@
-// FIX: import useCallback from react to resolve 'Cannot find name' error.
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ArduinoComponent, Wire, Terminal, Point } from '../types';
-import { ArduinoBoard, getPinPosition } from './ArduinoBoard';
+
+import React, { useState, MouseEvent, useMemo, useRef } from 'react';
+import { ArduinoComponent, Wire, Point, Terminal, ComponentType } from '../types';
+import { ArduinoBoard, allPins as arduinoPins } from './ArduinoBoard';
 import { LedIcon } from './icons/LedIcon';
 import { ButtonIcon } from './icons/ButtonIcon';
 import { PotentiometerIcon } from './icons/PotentiometerIcon';
@@ -15,197 +15,243 @@ interface BreadboardProps {
   onAddWire: (wire: Omit<Wire, 'id'>) => void;
   onDeleteWire: (id: string) => void;
   isSimulating: boolean;
+  arduinoPosition: Point;
+  onArduinoPositionUpdate: (newPosition: Point) => void;
 }
 
-type Draggable = { type: 'component'; id: string } | { type: 'wire-start'; terminal: Terminal } | null;
-
-const componentIconMap: Record<ArduinoComponent['type'], React.FC<any>> = {
-  led: LedIcon, button: ButtonIcon, potentiometer: PotentiometerIcon, resistor: ResistorIcon, servo: ServoIcon,
+// Defines component dimensions and terminal locations for precise wiring.
+const componentDimensions: Record<string, {width: number, height: number, terminals: Record<string, Point>}> = {
+    led: { width: 50, height: 50, terminals: { anode: {x: 20, y: 50}, cathode: {x: 30, y: 50} }},
+    resistor: { width: 100, height: 40, terminals: { p1: {x: 0, y: 20}, p2: {x: 100, y: 20} }},
+    button: { width: 50, height: 50, terminals: { p1: {x: 18, y: 40}, p2: {x: 32, y: 40} }},
+    potentiometer: { width: 50, height: 50, terminals: { p1: {x: 15, y: 45}, p2: {x: 25, y: 45}, p3: {x: 35, y: 45} }},
+    servo: { width: 60, height: 60, terminals: { signal: {x: 30, y: 50}} },
 };
 
-// Relative terminal positions for each component type
-const componentTerminals: Record<string, { id: string; x: number; y: number }[]> = {
-  led: [{ id: 'anode', x: 0, y: -25 }, { id: 'cathode', x: 0, y: 25 }],
-  resistor: [{ id: 't1', x: -50, y: 0 }, { id: 't2', x: 50, y: 0 }],
-  button: [{ id: 't1', x: -10, y: 15 }, { id: 't2', x: 10, y: 15 }],
-  potentiometer: [{ id: 't1', x: -15, y: 20 }, { id: 'gnd', x: 0, y: 20 }, { id: 't2', x: 15, y: 20 }],
-  servo: [{ id: 'signal', x: -15, y: 25 }, { id: 'vcc', x: 0, y: 25 }, { id: 'gnd', x: 15, y: 25 }],
+const getTerminalPosition = (terminal: Terminal, components: ArduinoComponent[], arduinoPosition: Point): Point | null => {
+    if (terminal.componentId === 'arduino') {
+        const pin = arduinoPins.find(p => p.id === terminal.terminalId);
+        if (!pin) return null;
+        return { x: arduinoPosition.x + 50 + pin.x + 6, y: arduinoPosition.y + pin.y + 6 };
+    }
+
+    const component = components.find(c => c.id === terminal.componentId);
+    if (!component || component.x === undefined || component.y === undefined) return null;
+
+    const dimensions = componentDimensions[component.type];
+    const terminalOffset = dimensions?.terminals[terminal.terminalId];
+    
+    if (terminalOffset) {
+        return { x: component.x + terminalOffset.x, y: component.y + terminalOffset.y };
+    }
+
+    return { x: component.x, y: component.y };
 };
 
-export const Breadboard: React.FC<BreadboardProps> = ({ components, wires, onComponentUpdate, onAddWire, onDeleteWire, isSimulating }) => {
-  const [dragging, setDragging] = useState<Draggable>(null);
-  const [dragOffset, setDragOffset] = useState<Point>({ x: 0, y: 0 });
-  const [newWireEnd, setNewWireEnd] = useState<Point | null>(null);
-  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
+
+export const Breadboard: React.FC<BreadboardProps> = ({
+  components,
+  wires,
+  onComponentUpdate,
+  onAddWire,
+  onDeleteWire,
+  isSimulating,
+  arduinoPosition,
+  onArduinoPositionUpdate,
+}) => {
+  const [drawingWire, setDrawingWire] = useState<{ start: Terminal; end: Point } | null>(null);
+  const [draggingInfo, setDraggingInfo] = useState<{ id: string; type: 'component' | 'arduino'; offset: Point } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const getSVGPoint = (e: React.MouseEvent): Point => {
-    if (!svgRef.current) return { x: 0, y: 0 };
-    const pt = svgRef.current.createSVGPoint();
+  const getSVGPoint = (e: MouseEvent): Point => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+
+    const pt = svg.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
-    const transformed = pt.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
+    const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
     return { x: transformed.x, y: transformed.y };
   };
-  
-  const getTerminalPosition = useCallback((terminal: Terminal): Point | null => {
-    if (terminal.componentId === 'arduino') {
-      return getPinPosition(terminal.terminalId);
-    }
-    const component = components.find(c => c.id === terminal.componentId);
-    const terminalDef = componentTerminals[component?.type as string]?.find(t => t.id === terminal.terminalId);
-    if (component && terminalDef && component.x && component.y) {
-      // Adjust for component scaling
-      const scale = 0.6;
-      return { x: component.x + (terminalDef.x * scale), y: component.y + (terminalDef.y * scale) };
-    }
-    return null;
-  }, [components]);
 
-  const handleMouseDown = (e: React.MouseEvent, type: 'component' | 'terminal', id: string, terminalId?: string) => {
+  const handleMouseDownOnPin = (e: MouseEvent, componentId: string, terminalId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isSimulating) return;
+    const startTerminal = { componentId, terminalId };
+    const startPoint = getTerminalPosition(startTerminal, components, arduinoPosition);
+    if(startPoint) {
+      setDrawingWire({ start: startTerminal, end: startPoint });
+    }
+  };
+
+  const handleMouseUpOnPin = (e: MouseEvent, componentId: string, terminalId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isSimulating || !drawingWire) return;
+    const endTerminal = { componentId, terminalId };
+    
+    if(drawingWire.start.componentId === endTerminal.componentId && drawingWire.start.terminalId === endTerminal.terminalId) {
+        setDrawingWire(null);
+        return;
+    }
+
+    onAddWire({ start: drawingWire.start, end: endTerminal });
+    setDrawingWire(null);
+  };
+  
+  const handleMouseDownOnComponent = (e: MouseEvent, componentId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isSimulating) return;
+    const component = components.find(c => c.id === componentId);
+    if (!component || component.x === undefined || component.y === undefined) return;
     const point = getSVGPoint(e);
-    setSelectedWireId(null);
-    if (type === 'component') {
-      const component = components.find(c => c.id === id);
-      if (component && component.x && component.y) {
-        setDragging({ type: 'component', id });
-        setDragOffset({ x: point.x - component.x, y: point.y - component.y });
+    setDraggingInfo({
+      id: componentId,
+      type: 'component',
+      offset: { x: point.x - component.x, y: point.y - component.y },
+    });
+  };
+
+  const handleMouseDownOnArduino = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isSimulating) return;
+    const point = getSVGPoint(e);
+    setDraggingInfo({
+      id: 'arduino',
+      type: 'arduino',
+      offset: { x: point.x - arduinoPosition.x, y: point.y - arduinoPosition.y },
+    });
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    const point = getSVGPoint(e);
+
+    if (drawingWire) {
+      setDrawingWire({ ...drawingWire, end: point });
+    }
+    
+    if (draggingInfo) {
+      const newX = point.x - draggingInfo.offset.x;
+      const newY = point.y - draggingInfo.offset.y;
+
+      if(draggingInfo.type === 'component') {
+        onComponentUpdate(draggingInfo.id, { x: newX, y: newY });
+      } else if (draggingInfo.type === 'arduino') {
+        onArduinoPositionUpdate({ x: newX, y: newY });
       }
-    } else if (type === 'terminal' && terminalId) {
-      const terminal = { componentId: id, terminalId };
-      setDragging({ type: 'wire-start', terminal });
-      setNewWireEnd(point);
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragging) return;
-    const point = getSVGPoint(e);
-    if (dragging.type === 'component') {
-      onComponentUpdate(dragging.id, { x: point.x - dragOffset.x, y: point.y - dragOffset.y });
-    } else if (dragging.type === 'wire-start') {
-      setNewWireEnd(point);
-    }
+  const handleMouseUp = () => {
+    setDrawingWire(null);
+    setDraggingInfo(null);
   };
 
-  const handleMouseUp = (e: React.MouseEvent, hoverTerminal?: Terminal) => {
-    if (dragging?.type === 'wire-start' && hoverTerminal && (dragging.terminal.componentId !== hoverTerminal.componentId || dragging.terminal.terminalId !== hoverTerminal.terminalId)) {
-        onAddWire({ start: dragging.terminal, end: hoverTerminal });
-    }
-    setDragging(null);
-    setNewWireEnd(null);
-  };
-  
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if((e.key === 'Delete' || e.key === 'Backspace') && selectedWireId) {
-            onDeleteWire(selectedWireId);
-            setSelectedWireId(null);
-        }
+  const renderComponent = (component: ArduinoComponent) => {
+    const commonProps = {
+        key: component.id,
+        onMouseDown: (e: MouseEvent) => handleMouseDownOnComponent(e, component.id),
+        className: `cursor-grab ${isSimulating ? 'cursor-not-allowed' : ''}`,
+        transform: `translate(${component.x || 0}, ${component.y || 0})`
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedWireId, onDeleteWire]);
 
-  const newWireStartPos = useMemo(() => {
-    if (dragging?.type === 'wire-start') {
-      return getTerminalPosition(dragging.terminal);
-    }
-    return null;
-  }, [dragging, getTerminalPosition]);
-  
-  const draggedComponent = useMemo(() => {
-    return dragging?.type === 'component' ? components.find(c => c.id === dragging.id) : null;
-  }, [dragging, components]);
-
-
-  const ComponentG = ({ component }: { component: ArduinoComponent }) => {
-    const Icon = componentIconMap[component.type];
-    const scale = 0.6;
-    const isBeingDragged = draggedComponent?.id === component.id;
-
-    return (
-        <g 
-            transform={`translate(${component.x || 0}, ${component.y || 0})`}
-            className={isBeingDragged ? "cursor-grabbing" : "cursor-grab"}
-            onMouseDown={!isBeingDragged ? (e) => handleMouseDown(e, 'component', component.id) : undefined}
-            style={isBeingDragged ? { filter: 'url(#drag-shadow)' } : {}}
-        >
-            <g transform={`scale(${scale})`}>
-                <Icon
-                    isOn={component.type === 'led' ? component.isOn : undefined}
-                    isPressed={component.type === 'button' ? component.isPressed : undefined}
-                    value={component.type === 'potentiometer' || component.type === 'servo' ? component.value : undefined}
-                />
-            </g>
-            {/* Render terminals */}
-            {componentTerminals[component.type]?.map(term => (
-                <circle 
-                    key={term.id} 
-                    cx={term.x * scale} 
-                    cy={term.y * scale} 
-                    r="5" 
-                    fill="rgba(255,255,0,0.3)" 
-                    stroke="rgba(255,255,0,0.5)" 
-                    strokeWidth="1" 
-                    className="cursor-crosshair" 
-                    onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, 'terminal', component.id, term.id); }} 
-                    onMouseUp={(e) => { e.stopPropagation(); handleMouseUp(e, { componentId: component.id, terminalId: term.id }); }} 
-                />
-            ))}
-            <text x="0" y="35" textAnchor="middle" fill="#e2e8f0" fontSize="12" className="font-sans select-none pointer-events-none">{component.label}</text>
-        </g>
+    const terminalRadius = 6;
+    const TerminalCircle = ({ terminalId, cx, cy }: { terminalId: string, cx: number, cy: number }) => (
+        <circle 
+            cx={cx} cy={cy} r={terminalRadius}
+            fill="transparent"
+            onMouseDown={(e) => handleMouseDownOnPin(e, component.id, terminalId)}
+            onMouseUp={(e) => handleMouseUpOnPin(e, component.id, terminalId)}
+            className="cursor-crosshair"
+        />
     );
-};
+
+    const dims = componentDimensions[component.type];
+    if (!dims) return null;
+
+    const terminals = Object.entries(dims.terminals).map(([id, pos]) => (
+      <TerminalCircle key={id} terminalId={id} cx={pos.x} cy={pos.y} />
+    ));
+
+    switch (component.type) {
+      case 'led':
+        return <g {...commonProps}><LedIcon isOn={!!component.isOn} width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'resistor':
+        return <g {...commonProps}><ResistorIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'button':
+        return <g {...commonProps}><ButtonIcon isPressed={!!component.isPressed} width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'potentiometer':
+        return <g {...commonProps}><PotentiometerIcon value={component.value} width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'servo':
+        return <g {...commonProps}><ServoIcon value={component.value} width={dims.width} height={dims.height} />{terminals}</g>;
+      default:
+        return null;
+    }
+  };
+
+  const wirePaths = useMemo(() => wires.map(wire => {
+    const startPos = getTerminalPosition(wire.start, components, arduinoPosition);
+    const endPos = getTerminalPosition(wire.end, components, arduinoPosition);
+    if (!startPos || !endPos) return null;
+    return {
+        id: wire.id,
+        path: `M ${startPos.x} ${startPos.y} L ${endPos.x} ${endPos.y}`
+    };
+  }).filter((p): p is { id: string, path: string } => !!p), [wires, components, arduinoPosition]);
+  
+  const drawingWirePath = useMemo(() => {
+    if (!drawingWire) return null;
+    const startPos = getTerminalPosition(drawingWire.start, components, arduinoPosition);
+    if (!startPos) return null;
+    return `M ${startPos.x} ${startPos.y} L ${drawingWire.end.x} ${drawingWire.end.y}`;
+  }, [drawingWire, components, arduinoPosition]);
 
   return (
-    <div className="bg-slate-800/50 rounded-lg p-2 border border-slate-700 shadow-lg h-full flex flex-col">
-      <div className="flex-grow relative bg-slate-900/30 rounded-md overflow-hidden">
+    <div className="bg-slate-900 rounded-lg w-full h-full border border-slate-700 overflow-hidden shadow-lg relative select-none">
         <svg
-          ref={svgRef}
-          width="100%"
-          height="100%"
-          onMouseMove={handleMouseMove}
-          onMouseUp={(e) => handleMouseUp(e)}
-          className="select-none"
+            ref={svgRef}
+            className="w-full h-full"
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
         >
-          <defs>
-            <pattern id="dot-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-              <circle cx="1" cy="1" r="1" fill="#334155" />
-            </pattern>
-            <filter id="drag-shadow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="3" dy="3" stdDeviation="3" floodColor="#000" floodOpacity="0.5" />
-            </filter>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#dot-grid)" />
+            <defs>
+                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(45, 212, 191, 0.1)" strokeWidth="1"/>
+                </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+            
+            <ArduinoBoard 
+                x={arduinoPosition.x}
+                y={arduinoPosition.y}
+                onBoardMouseDown={handleMouseDownOnArduino}
+                onPinMouseDown={(e, pinId) => handleMouseDownOnPin(e, 'arduino', pinId)}
+                onPinMouseUp={(e, pinId) => handleMouseUpOnPin(e, 'arduino', pinId)}
+            />
 
-          <ArduinoBoard onPinClick={() => {}} selectedPin={null} onPinMouseDown={(e, pinId) => handleMouseDown(e, 'terminal', 'arduino', pinId)} onPinMouseUp={(e, pinId) => handleMouseUp(e, {componentId: 'arduino', terminalId: pinId})} />
-          
-          {/* Render existing wires */}
-          {wires.map(wire => {
-             const startPos = getTerminalPosition(wire.start);
-             const endPos = getTerminalPosition(wire.end);
-             if(!startPos || !endPos) return null;
-             const isSelected = wire.id === selectedWireId;
-             return <line key={wire.id} x1={startPos.x} y1={startPos.y} x2={endPos.x} y2={endPos.y} stroke={isSelected ? '#22d3ee' : '#a1a1aa'} strokeWidth={isSelected ? 3 : 1.5} className="cursor-pointer" onClick={() => setSelectedWireId(wire.id)} />
-          })}
+            {components.map(renderComponent)}
+            
+            {wirePaths.map(wire => (
+                <g key={wire.id}>
+                    <path d={wire.path} stroke="#f59e0b" strokeWidth="5" strokeLinecap="round" className="cursor-pointer transition-all hover:stroke-red-500" onClick={() => !isSimulating && onDeleteWire(wire.id)} />
+                    <path d={wire.path} stroke="#fbbf24" strokeWidth="3" strokeLinecap="round" className="pointer-events-none" />
+                </g>
+            ))}
 
-          {/* Render new wire being drawn */}
-          {newWireStartPos && newWireEnd && (
-            <line x1={newWireStartPos.x} y1={newWireStartPos.y} x2={newWireEnd.x} y2={newWireEnd.y} stroke="#67e8f9" strokeWidth="2" strokeDasharray="4 4" />
-          )}
-
-          {/* Render components that are NOT being dragged */}
-          {components
-            .filter(c => c.id !== draggedComponent?.id)
-            .map((c) => <ComponentG key={c.id} component={c} />)
-          }
-          
-          {/* Render the dragged component last so it's on top */}
-          {draggedComponent && <ComponentG key={draggedComponent.id} component={draggedComponent} />}
-
+            {drawingWirePath && (
+                <path
+                    d={drawingWirePath}
+                    stroke="#fbbf24"
+                    strokeWidth="3"
+                    strokeDasharray="5 5"
+                    className="pointer-events-none"
+                />
+            )}
         </svg>
-      </div>
     </div>
   );
 };
