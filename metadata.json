@@ -1,0 +1,5 @@
+{
+  "name": "Arduino Visual Simulator",
+  "description": "A visual Arduino simulator app for designing and testing circuits. Features a blueprint-style code editor, a virtual breadboard for component placement, real-time simulation with interactive output visualization, and a serial monitor display.",
+  "requestFramePermissions": []
+}
