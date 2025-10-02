@@ -30,152 +30,191 @@ void loop() {
 `;
 
 /**
- * Validates the circuit connections before simulation.
+ * Validates the circuit connections using a more robust net-based graph analysis.
+ * This approach correctly traces connections through protoboards.
  * @param components An array of components in the circuit.
  * @param wires An array of wires connecting the components.
  * @returns An array of error message strings. If the array is empty, the circuit is valid.
  */
 const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[] => {
     const errors: string[] = [];
+    const adj: Map<string, string[]> = new Map();
+    const terminalKey = (t: Terminal) => `${t.componentId}::${t.terminalId}`;
 
-    const findConnectedTerminal = (startTerminal: Terminal): Terminal | null => {
-        const wire = wires.find(w =>
-            (w.start.componentId === startTerminal.componentId && w.start.terminalId === startTerminal.terminalId) ||
-            (w.end.componentId === startTerminal.componentId && w.end.terminalId === startTerminal.terminalId)
-        );
-        if (!wire) return null;
-        return wire.start.componentId === startTerminal.componentId && wire.start.terminalId === startTerminal.terminalId
-            ? wire.end
-            : wire.start;
+    const addEdge = (t1: Terminal, t2: Terminal) => {
+        const key1 = terminalKey(t1);
+        const key2 = terminalKey(t2);
+        if (!adj.has(key1)) adj.set(key1, []);
+        if (!adj.has(key2)) adj.set(key2, []);
+        adj.get(key1)!.push(key2);
+        adj.get(key2)!.push(key1);
     };
 
-    const traceToArduino = (startTerminal: Terminal, visited: Set<string> = new Set()): Terminal | null => {
-        const key = `${startTerminal.componentId}-${startTerminal.terminalId}`;
-        if (visited.has(key)) return null;
-        visited.add(key);
+    // 1. Build adjacency list from wires
+    wires.forEach(w => addEdge(w.start, w.end));
 
-        const connectedTerminal = findConnectedTerminal(startTerminal);
-        if (!connectedTerminal) return null;
-
-        if (connectedTerminal.componentId === 'arduino') {
-            return connectedTerminal;
+    // 2. Add internal connections for protoboards
+    components.filter(c => c.type === 'protoboard').forEach(proto => {
+        const numCols = 30;
+        // Horizontal Power Rails
+        for (let i = 1; i < numCols; i++) {
+            addEdge({componentId: proto.id, terminalId: `p-top-plus-${i}`}, {componentId: proto.id, terminalId: `p-top-plus-${i+1}`});
+            addEdge({componentId: proto.id, terminalId: `p-top-minus-${i}`}, {componentId: proto.id, terminalId: `p-top-minus-${i+1}`});
+            addEdge({componentId: proto.id, terminalId: `p-bottom-plus-${i}`}, {componentId: proto.id, terminalId: `p-bottom-plus-${i+1}`});
+            addEdge({componentId: proto.id, terminalId: `p-bottom-minus-${i}`}, {componentId: proto.id, terminalId: `p-bottom-minus-${i+1}`});
         }
-
-        const component = components.find(c => c.id === connectedTerminal.componentId);
-        if (component?.type === 'resistor') {
-            const otherTerminalId = connectedTerminal.terminalId === 'p1' ? 'p2' : 'p1';
-            return traceToArduino({ componentId: component.id, terminalId: otherTerminalId }, visited);
+        // Vertical Terminal Strips
+        const rows1 = ['A', 'B', 'C', 'D', 'E'];
+        const rows2 = ['F', 'G', 'H', 'I', 'J'];
+        for (let col = 1; col <= numCols; col++) {
+            for (let row = 0; row < rows1.length - 1; row++) {
+                addEdge({componentId: proto.id, terminalId: `${rows1[row]}-${col}`}, {componentId: proto.id, terminalId: `${rows1[row+1]}-${col}`});
+            }
+            for (let row = 0; row < rows2.length - 1; row++) {
+                 addEdge({componentId: proto.id, terminalId: `${rows2[row]}-${col}`}, {componentId: proto.id, terminalId: `${rows2[row+1]}-${col}`});
+            }
         }
-        
-        return null;
-    };
-    
+    });
+
+    // 3. Build electrical nets
+    const terminalToNetId = new Map<string, number>();
+    const netContents = new Map<number, Terminal[]>();
+    let currentNetId = 0;
+
+    for (const startNodeKey of adj.keys()) {
+        if (terminalToNetId.has(startNodeKey)) continue;
+
+        currentNetId++;
+        const currentNetTerminals: Terminal[] = [];
+        const q: string[] = [startNodeKey];
+        const visitedInNet = new Set<string>([startNodeKey]);
+
+        while (q.length > 0) {
+            const currKey = q.shift()!;
+            terminalToNetId.set(currKey, currentNetId);
+            const [componentId, terminalId] = currKey.split('::');
+            currentNetTerminals.push({ componentId, terminalId });
+            
+            const neighbors = adj.get(currKey) || [];
+            for (const neighborKey of neighbors) {
+                if (!visitedInNet.has(neighborKey)) {
+                    visitedInNet.add(neighborKey);
+                    q.push(neighborKey);
+                }
+            }
+        }
+        netContents.set(currentNetId, currentNetTerminals);
+    }
+
+    // 4. Validation logic using the nets
     const isArduinoPin = (terminal: Terminal | null, type: 'digital' | 'analog' | 'gnd' | '5v' | '3.3v') => {
         if (!terminal || terminal.componentId !== 'arduino') return false;
-        
         const pinId = terminal.terminalId;
         if (type === 'gnd') return pinId.startsWith('gnd');
         if (type === '5v') return pinId === '5v';
         if (type === '3.3v') return pinId === '3.3v';
         if (type === 'analog') return pinId.startsWith('A');
-        
         if (type === 'digital') {
-            if (pinId.startsWith('A')) return false; // Analog pins are not digital for this check
+            if (pinId.startsWith('A')) return false;
             const pinNum = parseInt(pinId.replace('pin-', ''));
             return !isNaN(pinNum) && pinNum >= 0 && pinNum <= 13;
         }
         return false;
     }
 
-    const validateLedConnection = (comp: ArduinoComponent) => {
-        const anodeTrace = traceToArduino({ componentId: comp.id, terminalId: 'anode' });
-        const cathodeTrace = traceToArduino({ componentId: comp.id, terminalId: 'cathode' });
-        if (!isArduinoPin(anodeTrace, 'digital') || !isArduinoPin(cathodeTrace, 'gnd')) {
-            errors.push(`LED "${comp.label}" must be connected to a digital pin (via a resistor) and a GND pin.`);
-        }
-    };
+    components.forEach(comp => {
+        if (comp.type === 'led') {
+            const anodeNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'anode' }));
+            const cathodeNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'cathode' }));
 
-    const validateButtonConnection = (comp: ArduinoComponent) => {
-        const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
-        const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
-        const isValid = (isArduinoPin(p1Trace, 'digital') && isArduinoPin(p2Trace, 'gnd')) || 
-                        (isArduinoPin(p2Trace, 'digital') && isArduinoPin(p1Trace, 'gnd'));
-        if (!isValid) {
-            errors.push(`Button "${comp.label}" must be connected between a digital pin and a GND pin.`);
-        }
-    };
+            if (!anodeNetId || !cathodeNetId) {
+                errors.push(`LED "${comp.label}" is not fully connected.`);
+                return;
+            }
 
-    const validatePotentiometerConnection = (comp: ArduinoComponent) => {
-        const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
-        const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
-        const p3Trace = traceToArduino({ componentId: comp.id, terminalId: 'p3' });
+            const cathodeNet = netContents.get(cathodeNetId) || [];
+            if (!cathodeNet.some(t => isArduinoPin(t, 'gnd'))) {
+                 errors.push(`The negative leg (cathode) of LED "${comp.label}" must be connected to a GND pin.`);
+                 return;
+            }
+            
+            // The anode must be connected to a digital pin via a resistor.
+            const anodeNet = netContents.get(anodeNetId) || [];
+            const connectedResistor = anodeNet.find(t => components.some(c => c.id === t.componentId && c.type === 'resistor'));
 
-        const wiperOk = isArduinoPin(p2Trace, 'analog');
-        const powerOk = (isArduinoPin(p1Trace, '5v') && isArduinoPin(p3Trace, 'gnd')) ||
-                        (isArduinoPin(p3Trace, '5v') && isArduinoPin(p1Trace, 'gnd'));
+            if (!connectedResistor) {
+                 errors.push(`LED "${comp.label}" must be connected to a resistor on its positive leg (anode).`);
+                 return;
+            }
 
-        if (!wiperOk || !powerOk) {
-            errors.push(`Potentiometer "${comp.label}" must have its outer pins connected to 5V and GND, and the middle pin to an Analog pin (A0-A5).`);
-        }
-    };
+            // Find the other side of the resistor
+            const resComp = components.find(c => c.id === connectedResistor.componentId)!;
+            const otherResTerminalId = connectedResistor.terminalId === 'p1' ? 'p2' : 'p1';
+            const otherResNetId = terminalToNetId.get(terminalKey({ componentId: resComp.id, terminalId: otherResTerminalId }));
 
-    const validateServoConnection = (comp: ArduinoComponent) => {
-        const signalTrace = traceToArduino({ componentId: comp.id, terminalId: 'signal' });
-        const vccTrace = traceToArduino({ componentId: comp.id, terminalId: 'vcc' });
-        const gndTrace = traceToArduino({ componentId: comp.id, terminalId: 'gnd' });
-
-        if (!isArduinoPin(signalTrace, 'digital') || !isArduinoPin(vccTrace, '5v') || !isArduinoPin(gndTrace, 'gnd')) {
-            errors.push(`Servo "${comp.label}" must have its signal pin connected to a digital pin, VCC to 5V, and GND to a GND pin.`);
-        }
-    };
-
-    const validateBuzzerConnection = (comp: ArduinoComponent) => {
-        const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
-        const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
-        const isValid = (isArduinoPin(p1Trace, 'digital') && isArduinoPin(p2Trace, 'gnd')) || 
-                        (isArduinoPin(p2Trace, 'digital') && isArduinoPin(p1Trace, 'gnd'));
-        if (!isValid) {
-            errors.push(`Buzzer "${comp.label}" must be connected between a digital pin and a GND pin.`);
-        }
-    };
-    
-    const validateSevenSegmentConnection = (comp: ArduinoComponent) => {
-        const terminals = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'dp', 'com'];
-        let hasError = false;
-        for (const terminalId of terminals) {
-            const trace = traceToArduino({ componentId: comp.id, terminalId });
-            if (terminalId === 'com') {
-                if (!isArduinoPin(trace, 'gnd')) {
-                    hasError = true;
-                    break;
-                }
-            } else {
-                if (!isArduinoPin(trace, 'digital')) {
-                    hasError = true;
-                    break;
-                }
+            if (!otherResNetId) {
+                errors.push(`Resistor for LED "${comp.label}" is not fully connected.`);
+                return;
+            }
+            
+            const digitalPinNet = netContents.get(otherResNetId) || [];
+            if (!digitalPinNet.some(t => isArduinoPin(t, 'digital'))) {
+                 errors.push(`The resistor for LED "${comp.label}" must be connected to a digital pin.`);
             }
         }
-        if (hasError) {
-             errors.push(`7-Segment Display "${comp.label}" must have its common (com) pin connected to GND and all segment pins (a-g, dp) connected to digital pins.`);
-        }
-    };
+        if (comp.type === 'button') {
+            const p1NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p1' }));
+            const p2NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p2' }));
+             if (!p1NetId || !p2NetId) { errors.push(`Button "${comp.label}" is not fully connected.`); return; }
 
-    components.forEach(comp => {
-        switch (comp.type) {
-            case 'led': validateLedConnection(comp); break;
-            case 'button': validateButtonConnection(comp); break;
-            case 'potentiometer': validatePotentiometerConnection(comp); break;
-            case 'servo': validateServoConnection(comp); break;
-            case 'buzzer': validateBuzzerConnection(comp); break;
-            case 'seven_segment_display': validateSevenSegmentConnection(comp); break;
-            case 'protoboard': break; // Protoboards are visual and don't need electrical validation
+            const p1Net = netContents.get(p1NetId) || [];
+            const p2Net = netContents.get(p2NetId) || [];
+
+            const p1ToDigital = p1Net.some(t => isArduinoPin(t, 'digital'));
+            const p2ToGnd = p2Net.some(t => isArduinoPin(t, 'gnd'));
+            const p1ToGnd = p1Net.some(t => isArduinoPin(t, 'gnd'));
+            const p2ToDigital = p2Net.some(t => isArduinoPin(t, 'digital'));
+            
+            if (!((p1ToDigital && p2ToGnd) || (p2ToDigital && p1ToGnd))) {
+                errors.push(`Button "${comp.label}" must be connected between a digital pin and a GND pin.`);
+            }
+        }
+         if (comp.type === 'potentiometer') {
+            const p1NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p1' })); // Power
+            const p2NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p2' })); // Wiper
+            const p3NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p3' })); // Ground
+            if (!p1NetId || !p2NetId || !p3NetId) { errors.push(`Potentiometer "${comp.label}" is not fully connected.`); return; }
+            
+            const p1Net = netContents.get(p1NetId) || [];
+            const p2Net = netContents.get(p2NetId) || [];
+            const p3Net = netContents.get(p3NetId) || [];
+
+            const wiperOk = p2Net.some(t => isArduinoPin(t, 'analog'));
+            const powerOk = (p1Net.some(t => isArduinoPin(t, '5v')) && p3Net.some(t => isArduinoPin(t, 'gnd'))) ||
+                            (p3Net.some(t => isArduinoPin(t, '5v')) && p1Net.some(t => isArduinoPin(t, 'gnd')));
+
+            if (!wiperOk || !powerOk) {
+                errors.push(`Potentiometer "${comp.label}" must have its outer pins connected to 5V and GND, and the middle pin to an Analog pin (A0-A5).`);
+            }
+        }
+        if (comp.type === 'servo') {
+            const signalNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'signal' }));
+            const vccNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'vcc' }));
+            const gndNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'gnd' }));
+            if (!signalNetId || !vccNetId || !gndNetId) { errors.push(`Servo "${comp.label}" is not fully connected.`); return; }
+
+            const signalNet = netContents.get(signalNetId) || [];
+            const vccNet = netContents.get(vccNetId) || [];
+            const gndNet = netContents.get(gndNetId) || [];
+
+            if (!signalNet.some(t => isArduinoPin(t, 'digital')) || !vccNet.some(t => isArduinoPin(t, '5v')) || !gndNet.some(t => isArduinoPin(t, 'gnd'))) {
+                errors.push(`Servo "${comp.label}" must have its signal pin connected to a digital pin, VCC to 5V, and GND to a GND pin.`);
+            }
         }
     });
 
     return errors;
 };
-
 
 function App() {
   const [prompt, setPrompt] = useState<string>('');

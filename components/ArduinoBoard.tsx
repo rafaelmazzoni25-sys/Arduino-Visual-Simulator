@@ -1,56 +1,55 @@
 import React from 'react';
 
+// A more robust Pin definition including the display label.
 interface Pin {
   id: string;
+  label: string;
   x: number;
   y: number;
 }
 
-const DIGITAL_HEADER_Y = 3.5;
-const POWER_HEADER_Y = 250.5;
+// All pin coordinates have been recalibrated for better visual alignment with the board's SVG graphics.
+// Labels are now explicit, including PWM markers (~).
+const allPins: Pin[] = [
+  // Top Digital Header (D8-D13, GND, AREF)
+  { id: 'pin-13', label: '13',    x: 298.5, y: 4 },
+  { id: 'pin-12', label: '12',    x: 315.1, y: 4 },
+  { id: 'pin-11', label: '~11',   x: 331.7, y: 4 },
+  { id: 'pin-10', label: '~10',   x: 348.3, y: 4 },
+  { id: 'pin-9',  label: '~9',    x: 364.9, y: 4 },
+  { id: 'pin-8',  label: '8',     x: 381.5, y: 4 },
+  { id: 'gnd-1',  label: 'GND',   x: 398.1, y: 4 },
+  { id: 'aref',   label: 'AREF',  x: 414.7, y: 4 },
 
-const digitalPins: Pin[] = [
-    // Top digital pins D8-D13
-    { id: 'pin-13', x: 298.5 },
-    { id: 'pin-12', x: 314.8 },
-    { id: 'pin-11', x: 331.1 },
-    { id: 'pin-10', x: 347.4 },
-    { id: 'pin-9', x: 363.7 },
-    { id: 'pin-8', x: 380.0 },
-    // Top digital pins D0-D7
-    { id: 'pin-7', x: 423.5 },
-    { id: 'pin-6', x: 439.8 },
-    { id: 'pin-5', x: 456.1 },
-    { id: 'pin-4', x: 472.4 },
-    { id: 'pin-3', x: 488.7 },
-    { id: 'pin-2', x: 505.0 },
-    { id: 'pin-1', x: 521.3 },
-    { id: 'pin-0', x: 537.6 },
-].map(p => ({ ...p, y: DIGITAL_HEADER_Y }));
+  // Top Digital Header (D0-D7)
+  { id: 'pin-7',  label: '7',     x: 423.5, y: 4 },
+  { id: 'pin-6',  label: '~6',    x: 440.1, y: 4 },
+  { id: 'pin-5',  label: '~5',    x: 456.7, y: 4 },
+  { id: 'pin-4',  label: '4',     x: 473.3, y: 4 },
+  { id: 'pin-3',  label: '~3',    x: 489.9, y: 4 },
+  { id: 'pin-2',  label: '2',     x: 506.5, y: 4 },
+  { id: 'pin-1',  label: '1 TX',  x: 523.1, y: 4 },
+  { id: 'pin-0',  label: '0 RX',  x: 539.7, y: 4 },
+  
+  // Bottom Power Header
+  { id: 'io-ref', label: 'IOREF', x: 197,   y: 251 },
+  { id: 'reset',  label: 'RESET', x: 213.6, y: 251 },
+  { id: '3.3v',   label: '3.3V',  x: 230.2, y: 251 },
+  { id: '5v',     label: '5V',    x: 246.8, y: 251 },
+  { id: 'gnd-2',  label: 'GND',   x: 263.4, y: 251 },
+  { id: 'gnd-3',  label: 'GND',   x: 280.0, y: 251 },
+  { id: 'vin',    label: 'VIN',   x: 296.6, y: 251 },
 
-const powerPins: Pin[] = [
-    { id: 'gnd-1', x: 396.3, y: DIGITAL_HEADER_Y },
-    { id: 'aref', x: 410.0, y: DIGITAL_HEADER_Y },
-    // Bottom power pins
-    { id: 'io-ref', x: 197.0 },
-    { id: 'reset', x: 213.3 },
-    { id: '3.3v', x: 229.6 },
-    { id: '5v', x: 245.9 },
-    { id: 'gnd-2', x: 262.2 },
-    { id: 'gnd-3', x: 278.5 },
-    { id: 'vin', x: 294.8 },
-].map(p => ({ ...p, y: POWER_HEADER_Y }));
+  // Bottom Analog Header
+  { id: 'A0', label: 'A0', x: 322.5, y: 251 },
+  { id: 'A1', label: 'A1', x: 339.1, y: 251 },
+  { id: 'A2', label: 'A2', x: 355.7, y: 251 },
+  { id: 'A3', label: 'A3', x: 372.3, y: 251 },
+  { id: 'A4', label: 'A4', x: 388.9, y: 251 }, // SDA
+  { id: 'A5', label: 'A5', x: 405.5, y: 251 }, // SCL
+];
 
-const analogPins: Pin[] = [
-    { id: 'A0', x: 322.0 },
-    { id: 'A1', x: 338.3 },
-    { id: 'A2', x: 354.6 },
-    { id: 'A3', x: 370.9 },
-    { id: 'A4', x: 387.2 },
-    { id: 'A5', x: 403.5 },
-].map(p => ({ ...p, y: POWER_HEADER_Y }));
-
-export const allPins = [...digitalPins, ...powerPins, ...analogPins];
+export { allPins };
 
 interface ArduinoBoardProps {
     x: number;
@@ -77,14 +76,27 @@ export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ x, y, onPinMouseDown
             <text x="340" y="225">ANALOG IN</text>
             <text x="550" y="25">UNO</text>
             
+            {/* Detailed Labels */}
+            <text x="260" y="200" className="text-[9px]">ICSP</text>
+            <text x="540" y="80" className="text-[9px]">ICSP</text>
+            <text x="135" y="88" className="text-[9px]">RESET</text>
+            <text x="520" y="55" className="text-amber-400 font-bold text-[9px]">TX ></text>
+            <text x="520" y="68" className="text-amber-400 font-bold text-[9px]">{'< RX'}</text>
+            <text x="280" y="20" className="text-amber-400 font-bold">L</text>
+            <text x="170" y="225" className="text-green-400 font-bold">ON</text>
+
             {/* Pin labels */}
             <g className="text-[10px]">
-                {digitalPins.map(p => <text key={p.id} x={p.x + 6} y={p.y + 20} textAnchor="middle">{p.id.replace('pin-','')}{['11','10','9','6','5','3'].includes(p.id.replace('pin-','')) ? '~' : ''}</text>)}
-                <text x={396.3+6} y={DIGITAL_HEADER_Y+20} textAnchor="middle">GND</text>
-                <text x={410.0+6} y={DIGITAL_HEADER_Y+20} textAnchor="middle">AREF</text>
-
-                {powerPins.filter(p => p.y === POWER_HEADER_Y).map(p => <text key={p.id} x={p.x + 6} y={p.y - 8} textAnchor="middle">{p.id.toUpperCase().replace('-','').replace('IOREF','IO').replace('3.3V','3V3')}</text>)}
-                {analogPins.map(p => <text key={p.id} x={p.x + 6} y={p.y - 8} textAnchor="middle">{p.id}</text>)}
+              {allPins.map(p => (
+                <text
+                  key={`${p.id}-label`}
+                  x={p.x + 6}
+                  y={p.y > 100 ? p.y - 10 : p.y + 22} // Position label above or below header
+                  textAnchor="middle"
+                >
+                  {p.label}
+                </text>
+              ))}
             </g>
         </g>
         
@@ -102,6 +114,12 @@ export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ x, y, onPinMouseDown
             <rect x="220" y="160" width="20" height="10" fill="#d1d5db" rx="2" />
             {/* Reset Button */}
             <rect x="110" y="75" width="20" height="20" rx="3" fill="#DC2626" />
+            
+            {/* On-board LEDs */}
+            <rect x="525" y="45" width="5" height="8" rx="1" fill="#f59e0b" /> {/* TX LED */}
+            <rect x="525" y="58" width="5" height="8" rx="1" fill="#f59e0b" /> {/* RX LED */}
+            <rect x="280" y="25" width="8" height="5" rx="1" fill="#f59e0b" /> {/* L (Pin 13) LED */}
+            <rect x="170" y="230" width="8" height="5" rx="1" fill="#16a34a" /> {/* ON LED */}
         </g>
 
         {/* Pin Headers */}

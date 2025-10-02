@@ -6,7 +6,7 @@ import { ButtonIcon } from './icons/ButtonIcon';
 import { PotentiometerIcon } from './icons/PotentiometerIcon';
 import { ResistorIcon } from './icons/ResistorIcon';
 import { ServoIcon } from './icons/ServoIcon';
-import { ProtoBoardIcon } from './icons/ProtoBoardIcon';
+import { ProtoBoardIcon, protoboardTerminals } from './icons/ProtoBoardIcon';
 import { BuzzerIcon } from './icons/BuzzerIcon';
 import { SevenSegmentIcon } from './icons/SevenSegmentIcon';
 
@@ -23,6 +23,12 @@ interface BreadboardProps {
   onArduinoPositionUpdate: (newPosition: Point) => void;
 }
 
+const protoTerminalsForDimensions: Record<string, Point> = {};
+protoboardTerminals.forEach(t => {
+  protoTerminalsForDimensions[t.id] = { x: t.x, y: t.y };
+});
+
+
 // Defines component dimensions and terminal locations for precise wiring.
 const componentDimensions: Record<string, {width: number, height: number, terminals: Record<string, Point>}> = {
     led: { width: 50, height: 50, terminals: { anode: {x: 20, y: 50}, cathode: {x: 30, y: 50} }},
@@ -36,7 +42,7 @@ const componentDimensions: Record<string, {width: number, height: number, termin
         e: {x: 0, y: 75}, f: {x: 0, y: 25}, g: {x: 0, y: 50}, dp: {x: 50, y: 100},
         com: {x: 25, y: 50} // A central common pin
     }},
-    protoboard: { width: 200, height: 100, terminals: {} },
+    protoboard: { width: 350, height: 200, terminals: protoTerminalsForDimensions },
 };
 
 const getTerminalPosition = (terminal: Terminal, components: ArduinoComponent[], arduinoPosition: Point): Point | null => {
@@ -190,7 +196,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
         transform: `translate(${component.x || 0}, ${component.y || 0})`
     };
 
-    const terminalRadius = 6;
+    const terminalRadius = component.type === 'protoboard' ? 2 : 6;
     const TerminalCircle = ({ terminalId, cx, cy }: { terminalId: string, cx: number, cy: number }) => (
         <circle 
             cx={cx} cy={cy} r={terminalRadius}
@@ -224,7 +230,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
       case 'seven_segment_display':
         return <g {...commonProps}><SevenSegmentIcon segments={typeof component.value === 'object' ? component.value : {}} width={dims.width} height={dims.height} />{terminals}</g>;
       case 'protoboard':
-        return <g {...commonProps}><ProtoBoardIcon width={dims.width} height={dims.height} /></g>;
+        return <g {...commonProps}><ProtoBoardIcon width={dims.width} height={dims.height} />{terminals}</g>;
       default:
         return null;
     }
