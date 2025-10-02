@@ -35,6 +35,11 @@ export const ServoIcon: React.FC<ServoIconProps> = ({ value = 90, className, ...
       <path d="M20 50 v5" stroke="#333" strokeWidth="2" /> {/* GND */}
       <path d="M30 50 v5" stroke="#dc2626" strokeWidth="2" /> {/* VCC */}
       <path d="M40 50 v5" stroke="#f59e0b" strokeWidth="2" /> {/* Signal */}
+
+      {/* Pin Labels */}
+      <text x="20" y="59" fontSize="6" fill="#a1a1aa" textAnchor="middle">G</text>
+      <text x="30" y="59" fontSize="6" fill="#a1a1aa" textAnchor="middle">V</text>
+      <text x="40" y="59" fontSize="6" fill="#a1a1aa" textAnchor="middle">S</text>
     </svg>
   );
 };

@@ -1,6 +1,6 @@
-import React, { useState, MouseEvent, useMemo, useRef, DragEvent } from 'react';
+import React, { useState, MouseEvent, useMemo, useRef, DragEvent, WheelEvent } from 'react';
 import { ArduinoComponent, Wire, Point, Terminal, ComponentType } from '../types';
-import { ArduinoBoard, allPins as arduinoPins } from './ArduinoBoard';
+import { ArduinoBoard, allPins as arduinoPins, Pin } from './ArduinoBoard';
 import { LedIcon } from './icons/LedIcon';
 import { ButtonIcon } from './icons/ButtonIcon';
 import { PotentiometerIcon } from './icons/PotentiometerIcon';
@@ -81,7 +81,11 @@ export const Breadboard: React.FC<BreadboardProps> = ({
 }) => {
   const [drawingWire, setDrawingWire] = useState<{ start: Terminal; end: Point } | null>(null);
   const [draggingInfo, setDraggingInfo] = useState<{ id: string; type: 'component' | 'arduino'; offset: Point } | null>(null);
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const getSVGPoint = (e: MouseEvent | DragEvent): Point => {
     const svg = svgRef.current;
@@ -91,8 +95,35 @@ export const Breadboard: React.FC<BreadboardProps> = ({
     pt.x = e.clientX;
     pt.y = e.clientY;
     const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-    return { x: transformed.x, y: transformed.y };
+    // Account for pan and zoom
+    return {
+      x: (transformed.x - view.x) / view.scale,
+      y: (transformed.y - view.y) / view.scale,
+    };
   };
+  
+  const handleWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const zoomSpeed = 0.1;
+    const direction = e.deltaY > 0 ? -1 : 1;
+    const scaleFactor = 1 + direction * zoomSpeed;
+    const newScale = Math.max(0.2, Math.min(3, view.scale * scaleFactor));
+
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const mousePoint = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+
+    setView(prevView => ({
+        scale: newScale,
+        x: mousePoint.x - (mousePoint.x - prevView.x) * scaleFactor,
+        y: mousePoint.y - (mousePoint.y - prevView.y) * scaleFactor,
+    }));
+  };
+
 
   const handleDragOver = (e: DragEvent) => {
     e.preventDefault();
@@ -108,6 +139,13 @@ export const Breadboard: React.FC<BreadboardProps> = ({
         const x = dimensions ? point.x - dimensions.width / 2 : point.x;
         const y = dimensions ? point.y - dimensions.height / 2 : point.y;
         onDropComponent(type, { x, y });
+    }
+  };
+
+  const handleMouseDown = (e: MouseEvent) => {
+    if (e.button === 1) { // Middle mouse button
+      e.preventDefault();
+      setIsPanning(true);
     }
   };
 
@@ -138,6 +176,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   };
   
   const handleMouseDownOnComponent = (e: MouseEvent, componentId: string) => {
+    if (e.button !== 0) return; // Only allow left-click drag
     e.preventDefault();
     e.stopPropagation();
     if (isSimulating) return;
@@ -152,6 +191,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   };
 
   const handleMouseDownOnArduino = (e: MouseEvent) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     if (isSimulating) return;
@@ -165,6 +205,15 @@ export const Breadboard: React.FC<BreadboardProps> = ({
 
   const handleMouseMove = (e: MouseEvent) => {
     const point = getSVGPoint(e);
+
+    if (isPanning) {
+        setView(prev => ({
+            ...prev,
+            x: prev.x + e.movementX,
+            y: prev.y + e.movementY,
+        }));
+        return;
+    }
 
     if (drawingWire) {
       setDrawingWire({ ...drawingWire, end: point });
@@ -185,6 +234,24 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   const handleMouseUp = () => {
     setDrawingWire(null);
     setDraggingInfo(null);
+    setIsPanning(false);
+  };
+
+  const handlePinMouseEnter = (e: React.MouseEvent, pin: Pin) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    
+    setTooltip({
+        text: pin.label,
+        x: e.clientX - rect.left + 15,
+        y: e.clientY - rect.top + 15,
+    });
+  };
+
+  const handlePinMouseLeave = () => {
+      setTooltip(null);
   };
 
   const renderComponent = (component: ArduinoComponent) => {
@@ -201,6 +268,8 @@ export const Breadboard: React.FC<BreadboardProps> = ({
         <circle 
             cx={cx} cy={cy} r={terminalRadius}
             fill="transparent"
+            stroke="transparent"
+            strokeWidth={10} // Increase clickable area
             onMouseDown={(e) => handleMouseDownOnPin(e, component.id, terminalId)}
             onMouseUp={(e) => handleMouseUpOnPin(e, component.id, terminalId)}
             className="cursor-crosshair"
@@ -254,15 +323,17 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   }, [drawingWire, components, arduinoPosition]);
 
   return (
-    <div className="bg-slate-900 rounded-lg w-full h-full border border-slate-700 overflow-hidden shadow-lg relative select-none">
+    <div ref={containerRef} className={`bg-slate-900 rounded-lg w-full h-full border border-slate-700 overflow-hidden shadow-lg relative select-none ${isPanning ? 'cursor-grabbing' : ''}`}>
         <svg
             ref={svgRef}
             className="w-full h-full"
             onMouseMove={handleMouseMove}
+            onMouseDown={handleMouseDown}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
+            onWheel={handleWheel}
         >
             <defs>
                 <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -271,33 +342,53 @@ export const Breadboard: React.FC<BreadboardProps> = ({
             </defs>
             <rect width="100%" height="100%" fill="url(#grid)" />
             
-            <ArduinoBoard 
-                x={arduinoPosition.x}
-                y={arduinoPosition.y}
-                onBoardMouseDown={handleMouseDownOnArduino}
-                onPinMouseDown={(e, pinId) => handleMouseDownOnPin(e, 'arduino', pinId)}
-                onPinMouseUp={(e, pinId) => handleMouseUpOnPin(e, 'arduino', pinId)}
-            />
+            <g transform={`translate(${view.x}, ${view.y}) scale(${view.scale})`}>
+              <ArduinoBoard 
+                  x={arduinoPosition.x}
+                  y={arduinoPosition.y}
+                  onBoardMouseDown={handleMouseDownOnArduino}
+                  onPinMouseDown={(e, pinId) => handleMouseDownOnPin(e, 'arduino', pinId)}
+                  onPinMouseUp={(e, pinId) => handleMouseUpOnPin(e, 'arduino', pinId)}
+                  onPinMouseEnter={handlePinMouseEnter}
+                  onPinMouseLeave={handlePinMouseLeave}
+              />
 
-            {components.map(renderComponent)}
-            
-            {wirePaths.map(wire => (
-                <g key={wire.id}>
-                    <path d={wire.path} stroke="#f59e0b" strokeWidth="5" strokeLinecap="round" className="cursor-pointer transition-all hover:stroke-red-500" onClick={() => !isSimulating && onDeleteWire(wire.id)} />
-                    <path d={wire.path} stroke="#fbbf24" strokeWidth="3" strokeLinecap="round" className="pointer-events-none" />
-                </g>
-            ))}
+              {components.map(renderComponent)}
+              
+              {wirePaths.map(wire => (
+                  <g key={wire.id}>
+                      <path d={wire.path} stroke="#f59e0b" strokeWidth="5" strokeLinecap="round" className="cursor-pointer transition-all hover:stroke-red-500" onClick={() => !isSimulating && onDeleteWire(wire.id)} />
+                      <path d={wire.path} stroke="#fbbf24" strokeWidth="3" strokeLinecap="round" className="pointer-events-none" />
+                  </g>
+              ))}
 
-            {drawingWirePath && (
-                <path
-                    d={drawingWirePath}
-                    stroke="#fbbf24"
-                    strokeWidth="3"
-                    strokeDasharray="5 5"
-                    className="pointer-events-none"
-                />
-            )}
+              {drawingWirePath && (
+                  <path
+                      d={drawingWirePath}
+                      stroke="#fbbf24"
+                      strokeWidth="3"
+                      strokeDasharray="5 5"
+                      className="pointer-events-none"
+                  />
+              )}
+            </g>
         </svg>
+        <div className="absolute bottom-4 right-4 flex flex-col gap-2">
+            <button onClick={() => setView(v => ({ ...v, scale: Math.min(3, v.scale + 0.2) }))} className="w-10 h-10 bg-slate-700/80 rounded-full text-xl font-bold hover:bg-slate-600/80 transition-all">+</button>
+            <button onClick={() => setView(v => ({ ...v, scale: Math.max(0.2, v.scale - 0.2) }))} className="w-10 h-10 bg-slate-700/80 rounded-full text-xl font-bold hover:bg-slate-600/80 transition-all">-</button>
+            <button onClick={() => setView({ scale: 1, x: 0, y: 0 })} className="w-10 h-10 bg-slate-700/80 rounded-full text-sm font-bold hover:bg-slate-600/80 transition-all">Reset</button>
+        </div>
+        {tooltip && (
+            <div
+                className="absolute bg-slate-900/90 text-white text-xs font-mono px-2 py-1 rounded-md shadow-lg pointer-events-none z-50 border border-slate-700"
+                style={{
+                    left: tooltip.x,
+                    top: tooltip.y,
+                }}
+            >
+                {tooltip.text}
+            </div>
+        )}
     </div>
   );
 };

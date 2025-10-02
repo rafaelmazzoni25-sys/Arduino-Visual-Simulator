@@ -10,5 +10,9 @@ export const BuzzerIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     {/* Pins */}
     <path d="M10 35 v5" stroke="#a1a1aa" strokeWidth="2" />
     <path d="M30 35 v5" stroke="#a1a1aa" strokeWidth="2" />
+    
+    {/* Polarity Indicators */}
+    <text x="10" y="34" fontSize="8" fill="#a1a1aa" textAnchor="middle">+</text>
+    <text x="30" y="34" fontSize="8" fill="#a1a1aa" textAnchor="middle">-</text>
   </svg>
 );

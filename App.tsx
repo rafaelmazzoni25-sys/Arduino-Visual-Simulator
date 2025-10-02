@@ -231,28 +231,37 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [editingComponent, setEditingComponent] = useState<ArduinoComponent | null>(null);
   const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const simulationStartTimeRef = useRef<number | null>(null);
 
   const stopSimulation = useCallback(() => {
     if (simulationIntervalRef.current) {
       clearInterval(simulationIntervalRef.current);
       simulationIntervalRef.current = null;
     }
-    setLogs(prev => [...prev, { timestamp: Date.now(), message: "Simulation stopped." }]);
+    if (simulationStartTimeRef.current) {
+      const elapsed = Date.now() - simulationStartTimeRef.current;
+      setLogs(prev => [...prev, { timestamp: elapsed, message: "Simulation stopped." }]);
+    }
     setComponents(prev => prev.map(c => ({...c, isOn: false, isPressed: false, value: c.type === 'potentiometer' ? c.value : 0})));
   }, []);
 
   const runSimulation = useCallback(() => {
+    if (!simulationStartTimeRef.current) return;
+    const startTime = simulationStartTimeRef.current;
+    
     console.log("Starting simulation with code:", code);
-    setLogs([{ timestamp: Date.now(), message: "Simulation started." }]);
+    setLogs([{ timestamp: 0, message: "Simulation started." }]);
 
     // This is a very basic mock simulation for the default "Blink" example.
     if (code.includes('pinMode(13, OUTPUT)') && code.includes('digitalWrite(13, HIGH)')) {
       simulationIntervalRef.current = setInterval(() => {
         setComponents(prev => prev.map(c => c.pin === 13 && c.type === 'led' ? {...c, isOn: !c.isOn} : c));
-        setLogs(prev => [...prev, { timestamp: Date.now(), message: `LED on pin 13 toggled`}]);
+        const elapsed = Date.now() - startTime;
+        setLogs(prev => [...prev, { timestamp: elapsed, message: `LED on pin 13 toggled`}]);
       }, 1000);
     } else {
-      setLogs(prev => [...prev, { timestamp: Date.now(), message: "Code not recognized by mock simulator. No components will change."}]);
+      const elapsed = Date.now() - startTime;
+      setLogs(prev => [...prev, { timestamp: elapsed, message: "Code not recognized by mock simulator. No components will change."}]);
     }
   }, [code]);
 
@@ -270,6 +279,7 @@ function App() {
     }
     
     setLogs([]);
+    simulationStartTimeRef.current = Date.now();
     setIsSimulating(true);
   };
   
@@ -295,6 +305,7 @@ function App() {
     setWires([]);
     setPrompt('');
     setError(null);
+    simulationStartTimeRef.current = null;
   };
 
   const handleGenerateCode = async () => {

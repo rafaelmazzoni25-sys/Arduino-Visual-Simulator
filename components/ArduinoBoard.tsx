@@ -1,52 +1,53 @@
 import React from 'react';
 
-// A more robust Pin definition including the display label.
-interface Pin {
+// A more robust Pin definition including the display label and offsets for clarity.
+export interface Pin {
   id: string;
   label: string;
   x: number;
   y: number;
+  labelXOffset?: number; // Optional horizontal adjustment for crowded labels
+  labelYOffset?: number; // Used to stagger crowded labels
 }
 
-// All pin coordinates have been recalibrated for better visual alignment with the board's SVG graphics.
-// Labels are now explicit, including PWM markers (~).
+// All pin coordinates have been meticulously recalibrated for perfect visual alignment,
+// correct spacing (including the D7-D8 gap), and label clarity.
 const allPins: Pin[] = [
-  // Top Digital Header (D8-D13, GND, AREF)
-  { id: 'pin-13', label: '13',    x: 298.5, y: 4 },
-  { id: 'pin-12', label: '12',    x: 315.1, y: 4 },
-  { id: 'pin-11', label: '~11',   x: 331.7, y: 4 },
-  { id: 'pin-10', label: '~10',   x: 348.3, y: 4 },
-  { id: 'pin-9',  label: '~9',    x: 364.9, y: 4 },
-  { id: 'pin-8',  label: '8',     x: 381.5, y: 4 },
-  { id: 'gnd-1',  label: 'GND',   x: 398.1, y: 4 },
-  { id: 'aref',   label: 'AREF',  x: 414.7, y: 4 },
-
-  // Top Digital Header (D0-D7)
-  { id: 'pin-7',  label: '7',     x: 423.5, y: 4 },
-  { id: 'pin-6',  label: '~6',    x: 440.1, y: 4 },
-  { id: 'pin-5',  label: '~5',    x: 456.7, y: 4 },
-  { id: 'pin-4',  label: '4',     x: 473.3, y: 4 },
-  { id: 'pin-3',  label: '~3',    x: 489.9, y: 4 },
-  { id: 'pin-2',  label: '2',     x: 506.5, y: 4 },
-  { id: 'pin-1',  label: '1 TX',  x: 523.1, y: 4 },
-  { id: 'pin-0',  label: '0 RX',  x: 539.7, y: 4 },
+  // Top Digital Header (left to right, with correct gap)
+  { id: 'aref',   label: 'AREF',  x: 282.0, y: 4 },
+  { id: 'gnd-1',  label: 'GND',   x: 298.6, y: 4 },
+  { id: 'pin-13', label: '13',    x: 315.2, y: 4 },
+  { id: 'pin-12', label: '12',    x: 331.8, y: 4 },
+  { id: 'pin-11', label: '~11',   x: 348.4, y: 4 },
+  { id: 'pin-10', label: '~10',   x: 365.0, y: 4 },
+  { id: 'pin-9',  label: '~9',    x: 381.6, y: 4 },
+  { id: 'pin-8',  label: '8',     x: 398.2, y: 4 },
+  // Characteristic GAP between D7 and D8
+  { id: 'pin-7',  label: '7',     x: 431.6, y: 4 },
+  { id: 'pin-6',  label: '~6',    x: 448.2, y: 4 },
+  { id: 'pin-5',  label: '~5',    x: 464.8, y: 4 },
+  { id: 'pin-4',  label: '4',     x: 481.4, y: 4 },
+  { id: 'pin-3',  label: '~3',    x: 498.0, y: 4 },
+  { id: 'pin-2',  label: '2',     x: 514.6, y: 4 },
+  { id: 'pin-1',  label: '1 TX',  x: 531.2, y: 4, labelXOffset: -4 },
+  { id: 'pin-0',  label: '0 RX',  x: 547.8, y: 4, labelXOffset: 4 },
   
-  // Bottom Power Header
-  { id: 'io-ref', label: 'IOREF', x: 197,   y: 251 },
-  { id: 'reset',  label: 'RESET', x: 213.6, y: 251 },
-  { id: '3.3v',   label: '3.3V',  x: 230.2, y: 251 },
-  { id: '5v',     label: '5V',    x: 246.8, y: 251 },
-  { id: 'gnd-2',  label: 'GND',   x: 263.4, y: 251 },
-  { id: 'gnd-3',  label: 'GND',   x: 280.0, y: 251 },
-  { id: 'vin',    label: 'VIN',   x: 296.6, y: 251 },
+  // Bottom Power Header - with more pronounced staggered labels to prevent overlap
+  { id: 'io-ref', label: 'IOREF', x: 197.0, y: 251, labelYOffset: 0 },
+  { id: 'reset',  label: 'RESET', x: 213.6, y: 251, labelYOffset: 18 },
+  { id: '3.3v',   label: '3.3V',  x: 230.2, y: 251, labelYOffset: 0 },
+  { id: '5v',     label: '5V',    x: 246.8, y: 251, labelYOffset: 18 },
+  { id: 'gnd-2',  label: 'GND',   x: 263.4, y: 251, labelYOffset: 0 },
+  { id: 'gnd-3',  label: 'GND',   x: 280.0, y: 251, labelYOffset: 18 },
+  { id: 'vin',    label: 'VIN',   x: 296.6, y: 251, labelYOffset: 0 },
 
-  // Bottom Analog Header
-  { id: 'A0', label: 'A0', x: 322.5, y: 251 },
-  { id: 'A1', label: 'A1', x: 339.1, y: 251 },
-  { id: 'A2', label: 'A2', x: 355.7, y: 251 },
-  { id: 'A3', label: 'A3', x: 372.3, y: 251 },
-  { id: 'A4', label: 'A4', x: 388.9, y: 251 }, // SDA
-  { id: 'A5', label: 'A5', x: 405.5, y: 251 }, // SCL
+  // Bottom Analog Header (with integrated SDA/SCL labels and adjusted offsets)
+  { id: 'A0', label: 'A0',     x: 322.5, y: 251 },
+  { id: 'A1', label: 'A1',     x: 339.1, y: 251 },
+  { id: 'A2', label: 'A2',     x: 355.7, y: 251 },
+  { id: 'A3', label: 'A3',     x: 372.3, y: 251 },
+  { id: 'A4', label: 'A4/SDA', x: 388.9, y: 251, labelXOffset: 6 },
+  { id: 'A5', label: 'A5/SCL', x: 405.5, y: 251, labelXOffset: 6 },
 ];
 
 export { allPins };
@@ -57,9 +58,11 @@ interface ArduinoBoardProps {
     onPinMouseDown: (e: React.MouseEvent, pinId: string) => void;
     onPinMouseUp: (e: React.MouseEvent, pinId: string) => void;
     onBoardMouseDown: (e: React.MouseEvent) => void;
+    onPinMouseEnter: (e: React.MouseEvent, pin: Pin) => void;
+    onPinMouseLeave: (e: React.MouseEvent) => void;
 }
 
-export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ x, y, onPinMouseDown, onPinMouseUp, onBoardMouseDown }) => {
+export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ x, y, onPinMouseDown, onPinMouseUp, onBoardMouseDown, onPinMouseEnter, onPinMouseLeave }) => {
   return (
     <g transform={`translate(${x}, ${y})`} className="cursor-grab">
       <svg viewBox="0 0 600 300" width="600" height="300">
@@ -82,21 +85,31 @@ export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ x, y, onPinMouseDown
             <text x="135" y="88" className="text-[9px]">RESET</text>
             <text x="520" y="55" className="text-amber-400 font-bold text-[9px]">TX ></text>
             <text x="520" y="68" className="text-amber-400 font-bold text-[9px]">{'< RX'}</text>
-            <text x="280" y="20" className="text-amber-400 font-bold">L</text>
+            <text x="298" y="20" className="text-amber-400 font-bold">L</text>
             <text x="170" y="225" className="text-green-400 font-bold">ON</text>
 
             {/* Pin labels */}
             <g className="text-[10px]">
-              {allPins.map(p => (
-                <text
-                  key={`${p.id}-label`}
-                  x={p.x + 6}
-                  y={p.y > 100 ? p.y - 10 : p.y + 22} // Position label above or below header
-                  textAnchor="middle"
-                >
-                  {p.label}
-                </text>
-              ))}
+              {allPins.map(p => {
+                const isBottom = p.y > 100;
+                // Base Y position for labels: below for top pins, above for bottom pins.
+                const labelBaseY = isBottom ? p.y - 15 : p.y + 28;
+                // Apply the vertical offset for staggering.
+                const labelY = isBottom 
+                  ? labelBaseY - (p.labelYOffset || 0)
+                  : labelBaseY + (p.labelYOffset || 0);
+                  
+                return (
+                  <text
+                    key={`${p.id}-label`}
+                    x={p.x + 6 + (p.labelXOffset || 0)}
+                    y={labelY}
+                    textAnchor="middle"
+                  >
+                    {p.label}
+                  </text>
+                );
+              })}
             </g>
         </g>
         
@@ -118,18 +131,17 @@ export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ x, y, onPinMouseDown
             {/* On-board LEDs */}
             <rect x="525" y="45" width="5" height="8" rx="1" fill="#f59e0b" /> {/* TX LED */}
             <rect x="525" y="58" width="5" height="8" rx="1" fill="#f59e0b" /> {/* RX LED */}
-            <rect x="280" y="25" width="8" height="5" rx="1" fill="#f59e0b" /> {/* L (Pin 13) LED */}
+            <rect x="300" y="25" width="8" height="5" rx="1" fill="#f59e0b" /> {/* L (Pin 13) LED */}
             <rect x="170" y="230" width="8" height="5" rx="1" fill="#16a34a" /> {/* ON LED */}
         </g>
 
-        {/* Pin Headers */}
+        {/* Pin Headers - Updated to match new pin layout */}
         <g>
-          <rect x="295" y="0" width="102" height="20" fill="#1F2937" />
-          <rect x="420" y="0" width="134" height="20" fill="#1F2937" />
+          <rect x="279" y="0" width="136" height="20" fill="#1F2937" />
+          <rect x="428" y="0" width="137" height="20" fill="#1F2937" />
           <rect x="194" y="247" width="117" height="20" fill="#1F2937" />
           <rect x="319" y="247" width="101" height="20" fill="#1F2937" />
-          <rect x="393" y="0" width="24" height="20" fill="#1F2937" />
-
+          
           {/* Render all pins */}
           {allPins.map(pin => (
             <rect
@@ -144,6 +156,8 @@ export const ArduinoBoard: React.FC<ArduinoBoardProps> = ({ x, y, onPinMouseDown
                 className="cursor-crosshair transition-all hover:fill-cyan-400"
                 onMouseDown={(e) => { e.stopPropagation(); onPinMouseDown(e, pin.id); }}
                 onMouseUp={(e) => { e.stopPropagation(); onPinMouseUp(e, pin.id); }}
+                onMouseEnter={(e) => onPinMouseEnter(e, pin)}
+                onMouseLeave={(e) => onPinMouseLeave(e)}
             />
           ))}
         </g>

@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface LedIconProps extends React.SVGProps<SVGSVGElement> {
@@ -32,6 +31,9 @@ export const LedIcon: React.FC<LedIconProps> = ({ isOn, className, ...props }) =
       {/* Pins */}
       <path d="M20 50 v-10" stroke="#a1a1aa" strokeWidth="2" />
       <path d="M30 50 v-10" stroke="#a1a1aa" strokeWidth="2" />
+      {/* Polarity Indicators */}
+      <text x="16" y="48" fontSize="8" fill="#a1a1aa" textAnchor="middle">+</text>
+      <text x="34" y="48" fontSize="8" fill="#a1a1aa" textAnchor="middle">-</text>
       {/* LED Bulb */}
       <path
         d="M 15,35 C 15,25 35,25 35,35 L 35,40 L 15,40 Z"
