@@ -6,7 +6,16 @@ export type ComponentType =
   | 'servo'
   | 'protoboard'
   | 'buzzer'
-  | 'seven_segment_display';
+  | 'seven_segment_display'
+  | 'lcd'
+  | 'ultrasonic_sensor'
+  | 'joystick'
+  | 'pir_sensor'
+  | 'temp_sensor'
+  | 'rgb_led'
+  | 'relay'
+  | 'keypad'
+  | 'dc_motor';
 
 export interface ArduinoComponent {
   id: string;

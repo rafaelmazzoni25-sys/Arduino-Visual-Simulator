@@ -115,60 +115,56 @@ const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[
         if (type === '3.3v') return pinId === '3.3v';
         if (type === 'analog') return pinId.startsWith('A');
         if (type === 'digital') {
-            if (pinId.startsWith('A')) return false;
-            const pinNum = parseInt(pinId.replace('pin-', ''));
+            if (pinId.startsWith('A')) return false; // Analog pins are not digital for this check
+            const pinNumStr = pinId.startsWith('pin-') ? pinId.substring(4) : pinId;
+            const pinNum = parseInt(pinNumStr, 10);
             return !isNaN(pinNum) && pinNum >= 0 && pinNum <= 13;
         }
         return false;
     }
+    
+    const getNet = (componentId: string, terminalId: string) => {
+        const netId = terminalToNetId.get(terminalKey({ componentId, terminalId }));
+        return netId ? netContents.get(netId) || [] : [];
+    };
 
     components.forEach(comp => {
         if (comp.type === 'led') {
-            const anodeNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'anode' }));
-            const cathodeNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'cathode' }));
+            const anodeNet = getNet(comp.id, 'anode');
+            const cathodeNet = getNet(comp.id, 'cathode');
 
-            if (!anodeNetId || !cathodeNetId) {
+            if (anodeNet.length === 0 || cathodeNet.length === 0) {
                 errors.push(`LED "${comp.label}" is not fully connected.`);
                 return;
             }
 
-            const cathodeNet = netContents.get(cathodeNetId) || [];
             if (!cathodeNet.some(t => isArduinoPin(t, 'gnd'))) {
                  errors.push(`The negative leg (cathode) of LED "${comp.label}" must be connected to a GND pin.`);
                  return;
             }
             
-            // The anode must be connected to a digital pin via a resistor.
-            const anodeNet = netContents.get(anodeNetId) || [];
             const connectedResistor = anodeNet.find(t => components.some(c => c.id === t.componentId && c.type === 'resistor'));
-
             if (!connectedResistor) {
                  errors.push(`LED "${comp.label}" must be connected to a resistor on its positive leg (anode).`);
                  return;
             }
 
-            // Find the other side of the resistor
             const resComp = components.find(c => c.id === connectedResistor.componentId)!;
             const otherResTerminalId = connectedResistor.terminalId === 'p1' ? 'p2' : 'p1';
-            const otherResNetId = terminalToNetId.get(terminalKey({ componentId: resComp.id, terminalId: otherResTerminalId }));
-
-            if (!otherResNetId) {
-                errors.push(`Resistor for LED "${comp.label}" is not fully connected.`);
-                return;
-            }
+            const digitalPinNet = getNet(resComp.id, otherResTerminalId);
             
-            const digitalPinNet = netContents.get(otherResNetId) || [];
+            if (digitalPinNet.length === 0) {
+                 errors.push(`Resistor for LED "${comp.label}" is not fully connected.`);
+                 return;
+            }
             if (!digitalPinNet.some(t => isArduinoPin(t, 'digital'))) {
                  errors.push(`The resistor for LED "${comp.label}" must be connected to a digital pin.`);
             }
         }
         if (comp.type === 'button') {
-            const p1NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p1' }));
-            const p2NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p2' }));
-             if (!p1NetId || !p2NetId) { errors.push(`Button "${comp.label}" is not fully connected.`); return; }
-
-            const p1Net = netContents.get(p1NetId) || [];
-            const p2Net = netContents.get(p2NetId) || [];
+            const p1Net = getNet(comp.id, 'p1');
+            const p2Net = getNet(comp.id, 'p2');
+            if (p1Net.length === 0 || p2Net.length === 0) { errors.push(`Button "${comp.label}" is not fully connected.`); return; }
 
             const p1ToDigital = p1Net.some(t => isArduinoPin(t, 'digital'));
             const p2ToGnd = p2Net.some(t => isArduinoPin(t, 'gnd'));
@@ -180,14 +176,10 @@ const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[
             }
         }
          if (comp.type === 'potentiometer') {
-            const p1NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p1' })); // Power
-            const p2NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p2' })); // Wiper
-            const p3NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p3' })); // Ground
-            if (!p1NetId || !p2NetId || !p3NetId) { errors.push(`Potentiometer "${comp.label}" is not fully connected.`); return; }
-            
-            const p1Net = netContents.get(p1NetId) || [];
-            const p2Net = netContents.get(p2NetId) || [];
-            const p3Net = netContents.get(p3NetId) || [];
+            const p1Net = getNet(comp.id, 'p1'); // Power
+            const p2Net = getNet(comp.id, 'p2'); // Wiper
+            const p3Net = getNet(comp.id, 'p3'); // Ground
+            if (p1Net.length === 0 || p2Net.length === 0 || p3Net.length === 0) { errors.push(`Potentiometer "${comp.label}" is not fully connected.`); return; }
 
             const wiperOk = p2Net.some(t => isArduinoPin(t, 'analog'));
             const powerOk = (p1Net.some(t => isArduinoPin(t, '5v')) && p3Net.some(t => isArduinoPin(t, 'gnd'))) ||
@@ -198,26 +190,19 @@ const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[
             }
         }
         if (comp.type === 'servo') {
-            const signalNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'signal' }));
-            const vccNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'vcc' }));
-            const gndNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'gnd' }));
-            if (!signalNetId || !vccNetId || !gndNetId) { errors.push(`Servo "${comp.label}" is not fully connected.`); return; }
-
-            const signalNet = netContents.get(signalNetId) || [];
-            const vccNet = netContents.get(vccNetId) || [];
-            const gndNet = netContents.get(gndNetId) || [];
+            const signalNet = getNet(comp.id, 'signal');
+            const vccNet = getNet(comp.id, 'vcc');
+            const gndNet = getNet(comp.id, 'gnd');
+            if (signalNet.length === 0 || vccNet.length === 0 || gndNet.length === 0) { errors.push(`Servo "${comp.label}" is not fully connected.`); return; }
 
             if (!signalNet.some(t => isArduinoPin(t, 'digital')) || !vccNet.some(t => isArduinoPin(t, '5v')) || !gndNet.some(t => isArduinoPin(t, 'gnd'))) {
                 errors.push(`Servo "${comp.label}" must have its signal pin connected to a digital pin, VCC to 5V, and GND to a GND pin.`);
             }
         }
         if (comp.type === 'buzzer') {
-            const p1NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p1' }));
-            const p2NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p2' }));
-            if (!p1NetId || !p2NetId) { errors.push(`Buzzer "${comp.label}" is not fully connected.`); return; }
-
-            const p1Net = netContents.get(p1NetId) || [];
-            const p2Net = netContents.get(p2NetId) || [];
+            const p1Net = getNet(comp.id, 'p1');
+            const p2Net = getNet(comp.id, 'p2');
+            if (p1Net.length === 0 || p2Net.length === 0) { errors.push(`Buzzer "${comp.label}" is not fully connected.`); return; }
 
             const p1ToDigital = p1Net.some(t => isArduinoPin(t, 'digital'));
             const p2ToGnd = p2Net.some(t => isArduinoPin(t, 'gnd'));
@@ -229,31 +214,111 @@ const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[
             }
         }
         if (comp.type === 'seven_segment_display') {
-            const comNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'com' }));
-            if (comNetId) {
-                const comNet = netContents.get(comNetId) || [];
+            const comNet = getNet(comp.id, 'com');
+            if (comNet.length > 0) {
                 if (!comNet.some(t => isArduinoPin(t, 'gnd'))) {
                     errors.push(`7-Segment Display "${comp.label}" common pin must be connected to a GND pin (assuming common cathode).`);
                 }
-            } else {
-                 const isAnyOtherPinWired = Object.keys(comp.value || {})
-                    .some(termId => termId !== 'com' && terminalToNetId.has(terminalKey({ componentId: comp.id, terminalId: termId })));
-                if (isAnyOtherPinWired) {
-                    errors.push(`7-Segment Display "${comp.label}" common pin ('com') must be connected.`);
-                }
             }
-
             const segmentTerminals = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'dp'];
             for (const term of segmentTerminals) {
-                const segNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: term }));
-                if (segNetId) {
-                    const segNet = netContents.get(segNetId) || [];
+                const segNet = getNet(comp.id, term);
+                if (segNet.length > 0) {
                     if (!segNet.some(t => isArduinoPin(t, 'digital'))) {
                         errors.push(`Segment '${term}' of 7-Segment Display "${comp.label}" is connected, but not to a digital pin.`);
                     }
                 }
             }
         }
+        if (comp.type === 'ultrasonic_sensor') {
+            const vccNet = getNet(comp.id, 'vcc');
+            const trigNet = getNet(comp.id, 'trig');
+            const echoNet = getNet(comp.id, 'echo');
+            const gndNet = getNet(comp.id, 'gnd');
+            if (vccNet.length === 0 || trigNet.length === 0 || echoNet.length === 0 || gndNet.length === 0) {
+                errors.push(`Ultrasonic Sensor "${comp.label}" is not fully connected.`);
+                return;
+            }
+            if (!vccNet.some(t => isArduinoPin(t, '5v'))) errors.push(`Ultrasonic Sensor "${comp.label}" VCC pin must be connected to 5V.`);
+            if (!gndNet.some(t => isArduinoPin(t, 'gnd'))) errors.push(`Ultrasonic Sensor "${comp.label}" GND pin must be connected to GND.`);
+            if (!trigNet.some(t => isArduinoPin(t, 'digital'))) errors.push(`Ultrasonic Sensor "${comp.label}" Trig pin must be connected to a digital pin.`);
+            if (!echoNet.some(t => isArduinoPin(t, 'digital'))) errors.push(`Ultrasonic Sensor "${comp.label}" Echo pin must be connected to a digital pin.`);
+        }
+        if (comp.type === 'lcd') {
+            const vssNet = getNet(comp.id, 'vss'); // Pin 1
+            const vddNet = getNet(comp.id, 'vdd'); // Pin 2
+            const rsNet = getNet(comp.id, 'rs');   // Pin 4
+            const eNet = getNet(comp.id, 'e');     // Pin 6
+            const d4Net = getNet(comp.id, 'd4');   // Pin 11
+            const d5Net = getNet(comp.id, 'd5');   // Pin 12
+            const d6Net = getNet(comp.id, 'd6');   // Pin 13
+            const d7Net = getNet(comp.id, 'd7');   // Pin 14
+
+            if ([vssNet, vddNet, rsNet, eNet, d4Net, d5Net, d6Net, d7Net].some(net => net.length === 0)) {
+                errors.push(`LCD "${comp.label}" is not fully connected. Ensure at least VSS, VDD, RS, E, and D4-D7 are wired.`);
+                return;
+            }
+            if (!vssNet.some(t => isArduinoPin(t, 'gnd'))) errors.push(`LCD "${comp.label}" VSS pin must be connected to GND.`);
+            if (!vddNet.some(t => isArduinoPin(t, '5v'))) errors.push(`LCD "${comp.label}" VDD pin must be connected to 5V.`);
+            if (!rsNet.some(t => isArduinoPin(t, 'digital'))) errors.push(`LCD "${comp.label}" RS pin must be connected to a digital pin.`);
+            if (!eNet.some(t => isArduinoPin(t, 'digital'))) errors.push(`LCD "${comp.label}" E pin must be connected to a digital pin.`);
+            if (!d4Net.some(t => isArduinoPin(t, 'digital'))) errors.push(`LCD "${comp.label}" D4 pin must be connected to a digital pin.`);
+            if (!d5Net.some(t => isArduinoPin(t, 'digital'))) errors.push(`LCD "${comp.label}" D5 pin must be connected to a digital pin.`);
+            if (!d6Net.some(t => isArduinoPin(t, 'digital'))) errors.push(`LCD "${comp.label}" D6 pin must be connected to a digital pin.`);
+            if (!d7Net.some(t => isArduinoPin(t, 'digital'))) errors.push(`LCD "${comp.label}" D7 pin must be connected to a digital pin.`);
+        }
+        if (comp.type === 'joystick') {
+            if (!getNet(comp.id, 'gnd').some(t => isArduinoPin(t, 'gnd'))) errors.push(`Joystick "${comp.label}" GND must be connected to a GND pin.`);
+            if (!getNet(comp.id, 'vcc').some(t => isArduinoPin(t, '5v'))) errors.push(`Joystick "${comp.label}" +5V must be connected to a 5V pin.`);
+            if (!getNet(comp.id, 'vrx').some(t => isArduinoPin(t, 'analog'))) errors.push(`Joystick "${comp.label}" VRx must be connected to an Analog pin.`);
+            if (!getNet(comp.id, 'vry').some(t => isArduinoPin(t, 'analog'))) errors.push(`Joystick "${comp.label}" VRy must be connected to an Analog pin.`);
+            if (getNet(comp.id, 'sw').length > 0 && !getNet(comp.id, 'sw').some(t => isArduinoPin(t, 'digital'))) {
+                 errors.push(`Joystick "${comp.label}" SW pin is connected, but not to a digital pin.`);
+            }
+        }
+        if (comp.type === 'pir_sensor') {
+            if (!getNet(comp.id, 'gnd').some(t => isArduinoPin(t, 'gnd'))) errors.push(`PIR Sensor "${comp.label}" GND must be connected to a GND pin.`);
+            if (!getNet(comp.id, 'vcc').some(t => isArduinoPin(t, '5v'))) errors.push(`PIR Sensor "${comp.label}" VCC must be connected to a 5V pin.`);
+            if (!getNet(comp.id, 'out').some(t => isArduinoPin(t, 'digital'))) errors.push(`PIR Sensor "${comp.label}" OUT must be connected to a digital pin.`);
+        }
+        if (comp.type === 'temp_sensor') {
+            if (!getNet(comp.id, 'gnd').some(t => isArduinoPin(t, 'gnd'))) errors.push(`Temp Sensor "${comp.label}" GND must be connected to a GND pin.`);
+            if (!getNet(comp.id, 'vcc').some(t => isArduinoPin(t, '5v'))) errors.push(`Temp Sensor "${comp.label}" VCC must be connected to a 5V pin.`);
+            if (!getNet(comp.id, 'vout').some(t => isArduinoPin(t, 'analog'))) errors.push(`Temp Sensor "${comp.label}" Vout must be connected to an Analog pin.`);
+        }
+        if (comp.type === 'rgb_led') {
+            if (!getNet(comp.id, 'gnd').some(t => isArduinoPin(t, 'gnd'))) errors.push(`RGB LED "${comp.label}" common cathode (GND) must be connected to a GND pin.`);
+            if (getNet(comp.id, 'r').length > 0 && !getNet(comp.id, 'r').some(t => isArduinoPin(t, 'digital'))) errors.push(`RGB LED "${comp.label}" R pin is connected, but not to a digital pin.`);
+            if (getNet(comp.id, 'g').length > 0 && !getNet(comp.id, 'g').some(t => isArduinoPin(t, 'digital'))) errors.push(`RGB LED "${comp.label}" G pin is connected, but not to a digital pin.`);
+            if (getNet(comp.id, 'b').length > 0 && !getNet(comp.id, 'b').some(t => isArduinoPin(t, 'digital'))) errors.push(`RGB LED "${comp.label}" B pin is connected, but not to a digital pin.`);
+        }
+        if (comp.type === 'relay') {
+            if (!getNet(comp.id, 'gnd').some(t => isArduinoPin(t, 'gnd'))) errors.push(`Relay "${comp.label}" GND must be connected to a GND pin.`);
+            if (!getNet(comp.id, 'vcc').some(t => isArduinoPin(t, '5v'))) errors.push(`Relay "${comp.label}" VCC must be connected to a 5V pin.`);
+            if (!getNet(comp.id, 'In').some(t => isArduinoPin(t, 'digital'))) errors.push(`Relay "${comp.label}" IN must be connected to a digital pin.`);
+        }
+        if (comp.type === 'keypad') {
+            const pins = ['r1', 'r2', 'r3', 'r4', 'c1', 'c2', 'c3', 'c4'];
+            for (const pin of pins) {
+                if (getNet(comp.id, pin).length > 0 && !getNet(comp.id, pin).some(t => isArduinoPin(t, 'digital'))) {
+                    errors.push(`Keypad "${comp.label}" pin ${pin.toUpperCase()} is connected, but not to a digital pin.`);
+                }
+            }
+        }
+        if (comp.type === 'dc_motor') {
+             const p1Net = getNet(comp.id, 'p1');
+             const p2Net = getNet(comp.id, 'p2');
+             if (p1Net.length === 0 || p2Net.length === 0) { errors.push(`DC Motor "${comp.label}" is not fully connected.`); return; }
+             const p1IsGnd = p1Net.some(t => isArduinoPin(t, 'gnd'));
+             const p2IsGnd = p2Net.some(t => isArduinoPin(t, 'gnd'));
+             const p1IsDigital = p1Net.some(t => isArduinoPin(t, 'digital'));
+             const p2IsDigital = p2Net.some(t => isArduinoPin(t, 'digital'));
+
+             if (!((p1IsGnd && p2IsDigital) || (p2IsGnd && p1IsDigital))) {
+                 errors.push(`DC Motor "${comp.label}" must be connected between a digital pin and a GND pin. (Note: A motor driver is recommended in real circuits).`);
+             }
+        }
+
     });
 
     return errors;

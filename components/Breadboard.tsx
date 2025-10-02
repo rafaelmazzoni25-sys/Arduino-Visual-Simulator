@@ -9,6 +9,15 @@ import { ServoIcon } from './icons/ServoIcon';
 import { ProtoBoardIcon, protoboardTerminals } from './icons/ProtoBoardIcon';
 import { BuzzerIcon } from './icons/BuzzerIcon';
 import { SevenSegmentIcon } from './icons/SevenSegmentIcon';
+import { LcdIcon } from './icons/LcdIcon';
+import { UltrasonicSensorIcon } from './icons/UltrasonicSensorIcon';
+import { JoystickIcon } from './icons/JoystickIcon';
+import { PirSensorIcon } from './icons/PirSensorIcon';
+import { TempSensorIcon } from './icons/TempSensorIcon';
+import { RgbLedIcon } from './icons/RgbLedIcon';
+import { RelayIcon } from './icons/RelayIcon';
+import { KeypadIcon } from './icons/KeypadIcon';
+import { DcMotorIcon } from './icons/DcMotorIcon';
 
 interface BreadboardProps {
   components: ArduinoComponent[];
@@ -34,22 +43,50 @@ const componentDimensions: Record<string, {width: number, height: number, termin
     led: { width: 50, height: 50, terminals: { anode: {x: 20, y: 50}, cathode: {x: 30, y: 50} }},
     resistor: { width: 100, height: 40, terminals: { p1: {x: 0, y: 20}, p2: {x: 100, y: 20} }},
     button: { width: 50, height: 50, terminals: { p1: {x: 18, y: 40}, p2: {x: 32, y: 40} }},
-    potentiometer: { width: 50, height: 50, terminals: { p1: {x: 15, y: 45}, p2: {x: 25, y: 45}, p3: {x: 35, y: 45} }},
-    servo: { width: 60, height: 60, terminals: { gnd: {x: 20, y: 50}, vcc: {x: 30, y: 50}, signal: {x: 40, y: 50} }},
+    potentiometer: { width: 50, height: 50, terminals: { p1: {x: 20, y: 50}, p2: {x: 25, y: 50}, p3: {x: 30, y: 50} }},
+    servo: { width: 60, height: 60, terminals: { gnd: {x: 20, y: 55}, vcc: {x: 30, y: 55}, signal: {x: 40, y: 55} }},
     buzzer: { width: 40, height: 40, terminals: { p1: {x: 10, y: 40}, p2: {x: 30, y: 40} }},
     seven_segment_display: { width: 50, height: 100, terminals: {
         a: {x: 25, y: 0}, b: {x: 50, y: 25}, c: {x: 50, y: 75}, d: {x: 25, y: 100},
         e: {x: 0, y: 75}, f: {x: 0, y: 25}, g: {x: 0, y: 50}, dp: {x: 50, y: 100},
         com: {x: 25, y: 50} // A central common pin
     }},
+    ultrasonic_sensor: { width: 80, height: 50, terminals: {
+        vcc: { x: 14, y: 50 },
+        trig: { x: 32, y: 50 },
+        echo: { x: 50, y: 50 },
+        gnd: { x: 68, y: 50 },
+    }},
+    lcd: { width: 160, height: 50, terminals: {
+        vss: { x: 7, y: 0 }, vdd: { x: 16.6, y: 0 }, vo: { x: 26.2, y: 0 }, rs: { x: 35.8, y: 0 },
+        rw: { x: 45.4, y: 0 }, e: { x: 55, y: 0 }, d0: { x: 64.6, y: 0 }, d1: { x: 74.2, y: 0 },
+        d2: { x: 83.8, y: 0 }, d3: { x: 93.4, y: 0 }, d4: { x: 103, y: 0 }, d5: { x: 112.6, y: 0 },
+        d6: { x: 122.2, y: 0 }, d7: { x: 131.8, y: 0 }, a: { x: 141.4, y: 0 }, k: { x: 151, y: 0 },
+    }},
     protoboard: { width: 350, height: 200, terminals: protoTerminalsForDimensions },
+    joystick: { width: 70, height: 70, terminals: { gnd: {x: 10, y: 0}, vcc: {x: 25, y: 0}, vrx: {x: 40, y: 0}, vry: {x: 55, y: 0}, sw: {x: 70, y: 0} }},
+    pir_sensor: { width: 50, height: 60, terminals: { vcc: {x: 15, y: 60}, out: {x: 25, y: 60}, gnd: {x: 35, y: 60} }},
+    temp_sensor: { width: 50, height: 50, terminals: { vcc: {x: 20, y: 50}, vout: {x: 25, y: 50}, gnd: {x: 30, y: 50} }},
+    rgb_led: { width: 50, height: 60, terminals: { r: {x: 16, y: 60}, gnd: {x: 22, y: 60}, g: {x: 28, y: 60}, b: {x: 34, y: 60} }},
+    relay: { width: 80, height: 50, terminals: { In: {x: 15, y: 10}, gnd: {x: 15, y: 25}, vcc: {x: 15, y: 40} }},
+    keypad: { width: 100, height: 120, terminals: { 
+        r1: {x: 14, y: 120}, r2: {x: 24, y: 120}, r3: {x: 34, y: 120}, r4: {x: 44, y: 120},
+        c1: {x: 54, y: 120}, c2: {x: 64, y: 120}, c3: {x: 74, y: 120}, c4: {x: 84, y: 120}
+    }},
+    dc_motor: { width: 60, height: 50, terminals: { p1: {x: 15, y: 50}, p2: {x: 45, y: 50} }},
 };
 
+/**
+ * Calculates the absolute position of a terminal on the SVG canvas.
+ * @param terminal The terminal to locate.
+ * @param components The list of all components.
+ * @param arduinoPosition The position of the Arduino board.
+ * @returns The {x, y} coordinates of the terminal, or null if not found.
+ */
 const getTerminalPosition = (terminal: Terminal, components: ArduinoComponent[], arduinoPosition: Point): Point | null => {
     if (terminal.componentId === 'arduino') {
         const pin = arduinoPins.find(p => p.id === terminal.terminalId);
         if (!pin) return null;
-        // The pin coordinates are relative to the Arduino SVG's top-left corner (0,0)
         return { x: arduinoPosition.x + pin.x + 6, y: arduinoPosition.y + pin.y + 6 };
     }
 
@@ -64,6 +101,18 @@ const getTerminalPosition = (terminal: Terminal, components: ArduinoComponent[],
     }
 
     return { x: component.x, y: component.y };
+};
+
+/**
+ * Generates an SVG path string for a clean, U-shaped orthogonal wire.
+ * @param startPos The starting point of the wire.
+ * @param endPos The ending point of the wire.
+ * @returns An SVG path data string.
+ */
+const getOrthogonalPath = (startPos: Point, endPos: Point): string => {
+  const midX = startPos.x + (endPos.x - startPos.x) / 2;
+  // Creates a path that goes: Move -> Horizontal -> Vertical -> Horizontal
+  return `M ${startPos.x} ${startPos.y} H ${midX} V ${endPos.y} H ${endPos.x}`;
 };
 
 
@@ -95,7 +144,6 @@ export const Breadboard: React.FC<BreadboardProps> = ({
     pt.x = e.clientX;
     pt.y = e.clientY;
     const transformed = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-    // Account for pan and zoom
     return {
       x: (transformed.x - view.x) / view.scale,
       y: (transformed.y - view.y) / view.scale,
@@ -135,7 +183,6 @@ export const Breadboard: React.FC<BreadboardProps> = ({
     if (type) {
         const point = getSVGPoint(e);
         const dimensions = componentDimensions[type];
-        // Adjust drop position to center the component on the cursor
         const x = dimensions ? point.x - dimensions.width / 2 : point.x;
         const y = dimensions ? point.y - dimensions.height / 2 : point.y;
         onDropComponent(type, { x, y });
@@ -298,8 +345,26 @@ export const Breadboard: React.FC<BreadboardProps> = ({
         return <g {...commonProps}><BuzzerIcon width={dims.width} height={dims.height} />{terminals}</g>;
       case 'seven_segment_display':
         return <g {...commonProps}><SevenSegmentIcon segments={typeof component.value === 'object' ? component.value : {}} width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'ultrasonic_sensor':
+        return <g {...commonProps}><UltrasonicSensorIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'lcd':
+        return <g {...commonProps}><LcdIcon width={dims.width} height={dims.height} />{terminals}</g>;
       case 'protoboard':
         return <g {...commonProps}><ProtoBoardIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'joystick':
+        return <g {...commonProps}><JoystickIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'pir_sensor':
+        return <g {...commonProps}><PirSensorIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'temp_sensor':
+        return <g {...commonProps}><TempSensorIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'rgb_led':
+        return <g {...commonProps}><RgbLedIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'relay':
+        return <g {...commonProps}><RelayIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'keypad':
+        return <g {...commonProps}><KeypadIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'dc_motor':
+        return <g {...commonProps}><DcMotorIcon width={dims.width} height={dims.height} />{terminals}</g>;
       default:
         return null;
     }
@@ -311,7 +376,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
     if (!startPos || !endPos) return null;
     return {
         id: wire.id,
-        path: `M ${startPos.x} ${startPos.y} L ${endPos.x} ${endPos.y}`
+        path: getOrthogonalPath(startPos, endPos)
     };
   }).filter((p): p is { id: string, path: string } => !!p), [wires, components, arduinoPosition]);
   
@@ -319,7 +384,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
     if (!drawingWire) return null;
     const startPos = getTerminalPosition(drawingWire.start, components, arduinoPosition);
     if (!startPos) return null;
-    return `M ${startPos.x} ${startPos.y} L ${drawingWire.end.x} ${drawingWire.end.y}`;
+    return getOrthogonalPath(startPos, drawingWire.end);
   }, [drawingWire, components, arduinoPosition]);
 
   return (
@@ -357,8 +422,8 @@ export const Breadboard: React.FC<BreadboardProps> = ({
               
               {wirePaths.map(wire => (
                   <g key={wire.id}>
-                      <path d={wire.path} stroke="#f59e0b" strokeWidth="5" strokeLinecap="round" className="cursor-pointer transition-all hover:stroke-red-500" onClick={() => !isSimulating && onDeleteWire(wire.id)} />
-                      <path d={wire.path} stroke="#fbbf24" strokeWidth="3" strokeLinecap="round" className="pointer-events-none" />
+                      <path d={wire.path} stroke="transparent" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" fill="none" className="cursor-pointer" onClick={() => !isSimulating && onDeleteWire(wire.id)} />
+                      <path d={wire.path} stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" className="pointer-events-none transition-all hover:stroke-red-500" />
                   </g>
               ))}
 
@@ -366,8 +431,9 @@ export const Breadboard: React.FC<BreadboardProps> = ({
                   <path
                       d={drawingWirePath}
                       stroke="#fbbf24"
-                      strokeWidth="3"
-                      strokeDasharray="5 5"
+                      strokeWidth="2"
+                      strokeDasharray="4 4"
+                      fill="none"
                       className="pointer-events-none"
                   />
               )}
