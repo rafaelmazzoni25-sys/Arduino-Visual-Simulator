@@ -35,7 +35,15 @@ const powerPins: Pin[] = [
     { id: '5v', x: 244, y: 226, label: '5V', labelYOffset: -8},
 ];
 
-export const allPins = [...digitalPins, ...powerPins];
+const analogPins: Pin[] = Array.from({ length: 6 }, (_, i) => ({
+    id: `A${i}`,
+    x: 170 + i * 16.3,
+    y: 226,
+    label: `A${i}`,
+    labelYOffset: -8,
+}));
+
+export const allPins = [...digitalPins, ...powerPins, ...analogPins];
 
 interface ArduinoBoardProps {
     x: number;

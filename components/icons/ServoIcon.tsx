@@ -30,6 +30,11 @@ export const ServoIcon: React.FC<ServoIconProps> = ({ value = 90, className, ...
       <g transform={`rotate(${angle} 30 20)`}>
         <rect x="28" y="5" width="4" height="15" rx="1" fill="#e5e7eb" />
       </g>
+      
+      {/* Pins */}
+      <path d="M20 50 v5" stroke="#333" strokeWidth="2" /> {/* GND */}
+      <path d="M30 50 v5" stroke="#dc2626" strokeWidth="2" /> {/* VCC */}
+      <path d="M40 50 v5" stroke="#f59e0b" strokeWidth="2" /> {/* Signal */}
     </svg>
   );
 };

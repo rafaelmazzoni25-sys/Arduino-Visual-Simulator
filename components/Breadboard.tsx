@@ -26,7 +26,7 @@ const componentDimensions: Record<string, {width: number, height: number, termin
     resistor: { width: 100, height: 40, terminals: { p1: {x: 0, y: 20}, p2: {x: 100, y: 20} }},
     button: { width: 50, height: 50, terminals: { p1: {x: 18, y: 40}, p2: {x: 32, y: 40} }},
     potentiometer: { width: 50, height: 50, terminals: { p1: {x: 15, y: 45}, p2: {x: 25, y: 45}, p3: {x: 35, y: 45} }},
-    servo: { width: 60, height: 60, terminals: { signal: {x: 30, y: 50}} },
+    servo: { width: 60, height: 60, terminals: { gnd: {x: 20, y: 50}, vcc: {x: 30, y: 50}, signal: {x: 40, y: 50} }},
 };
 
 const getTerminalPosition = (terminal: Terminal, components: ArduinoComponent[], arduinoPosition: Point): Point | null => {

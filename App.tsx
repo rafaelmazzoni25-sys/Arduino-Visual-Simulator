@@ -5,7 +5,7 @@ import { SerialMonitor } from './components/SerialMonitor';
 import { Controls } from './components/Controls';
 import { ComponentPalette } from './components/ComponentPalette';
 import { EditComponentModal } from './components/EditComponentModal';
-import { ArduinoComponent, SerialLog, ComponentType, Wire, Point } from './types';
+import { ArduinoComponent, SerialLog, ComponentType, Wire, Point, Terminal } from './types';
 import { generateCodeFromPrompt } from './services/geminiService';
 
 const DEFAULT_CODE = `/*
@@ -28,6 +28,108 @@ void loop() {
   delay(1000);              // wait for a second
 }
 `;
+
+const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[] => {
+    const errors: string[] = [];
+
+    const findConnectedTerminal = (startTerminal: Terminal): Terminal | null => {
+        const wire = wires.find(w =>
+            (w.start.componentId === startTerminal.componentId && w.start.terminalId === startTerminal.terminalId) ||
+            (w.end.componentId === startTerminal.componentId && w.end.terminalId === startTerminal.terminalId)
+        );
+        if (!wire) return null;
+        return wire.start.componentId === startTerminal.componentId && wire.start.terminalId === startTerminal.terminalId
+            ? wire.end
+            : wire.start;
+    };
+
+    const traceToArduino = (startTerminal: Terminal, visited: Set<string> = new Set()): Terminal | null => {
+        const key = `${startTerminal.componentId}-${startTerminal.terminalId}`;
+        if (visited.has(key)) return null;
+        visited.add(key);
+
+        const connectedTerminal = findConnectedTerminal(startTerminal);
+        if (!connectedTerminal) return null;
+
+        if (connectedTerminal.componentId === 'arduino') {
+            return connectedTerminal;
+        }
+
+        const component = components.find(c => c.id === connectedTerminal.componentId);
+        if (component?.type === 'resistor') {
+            const otherTerminalId = connectedTerminal.terminalId === 'p1' ? 'p2' : 'p1';
+            return traceToArduino({ componentId: component.id, terminalId: otherTerminalId }, visited);
+        }
+        
+        return null;
+    };
+    
+    const isArduinoPin = (terminal: Terminal | null, type: 'digital' | 'analog' | 'gnd' | '5v') => {
+        if (!terminal || terminal.componentId !== 'arduino') return false;
+        
+        const pinId = terminal.terminalId;
+        if (type === 'gnd') return pinId.startsWith('gnd');
+        if (type === '5v') return pinId === '5v';
+        if (type === 'analog') return pinId.startsWith('A');
+        
+        if (type === 'digital') {
+            if (!pinId.startsWith('pin-')) return false;
+            const pinNum = parseInt(pinId.replace('pin-', ''));
+            return !isNaN(pinNum) && pinNum >= 0 && pinNum <= 13;
+        }
+        return false;
+    }
+
+    components.forEach(comp => {
+        switch (comp.type) {
+            case 'led': {
+                const anodeTrace = traceToArduino({ componentId: comp.id, terminalId: 'anode' });
+                const cathodeTrace = traceToArduino({ componentId: comp.id, terminalId: 'cathode' });
+                if (!isArduinoPin(anodeTrace, 'digital') || !isArduinoPin(cathodeTrace, 'gnd')) {
+                    errors.push(`LED "${comp.label}" must be connected to a digital pin (via a resistor) and a GND pin.`);
+                }
+                break;
+            }
+            case 'button': {
+                const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
+                const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
+                const isValid = (isArduinoPin(p1Trace, 'digital') && isArduinoPin(p2Trace, 'gnd')) || 
+                                (isArduinoPin(p2Trace, 'digital') && isArduinoPin(p1Trace, 'gnd'));
+                if (!isValid) {
+                    errors.push(`Button "${comp.label}" must be connected between a digital pin and a GND pin.`);
+                }
+                break;
+            }
+            case 'potentiometer': {
+                const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
+                const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
+                const p3Trace = traceToArduino({ componentId: comp.id, terminalId: 'p3' });
+
+                const wiperOk = isArduinoPin(p2Trace, 'analog');
+                const powerOk = (isArduinoPin(p1Trace, '5v') && isArduinoPin(p3Trace, 'gnd')) ||
+                                (isArduinoPin(p3Trace, '5v') && isArduinoPin(p1Trace, 'gnd'));
+
+                if (!wiperOk || !powerOk) {
+                    errors.push(`Potentiometer "${comp.label}" must have its outer pins connected to 5V and GND, and the middle pin to an Analog pin (A0-A5).`);
+                }
+                break;
+            }
+            case 'servo': {
+                const signalTrace = traceToArduino({ componentId: comp.id, terminalId: 'signal' });
+                const vccTrace = traceToArduino({ componentId: comp.id, terminalId: 'vcc' });
+                const gndTrace = traceToArduino({ componentId: comp.id, terminalId: 'gnd' });
+
+                if (!isArduinoPin(signalTrace, 'digital') || !isArduinoPin(vccTrace, '5v') || !isArduinoPin(gndTrace, 'gnd')) {
+                    errors.push(`Servo "${comp.label}" must have its signal pin connected to a digital pin, VCC to 5V, and GND to a GND pin.`);
+                }
+                break;
+            }
+        }
+    });
+
+    return errors;
+};
+
 
 function App() {
   const [prompt, setPrompt] = useState<string>('');
@@ -72,11 +174,18 @@ function App() {
   const handleRunToggle = () => {
     if (isSimulating) {
       setIsSimulating(false);
-    } else {
-      setError(null);
-      setLogs([]);
-      setIsSimulating(true);
+      return;
     }
+
+    setError(null);
+    const validationErrors = validateCircuit(components, wires);
+    if (validationErrors.length > 0) {
+        setError(validationErrors.join('\n'));
+        return; // Block simulation
+    }
+    
+    setLogs([]);
+    setIsSimulating(true);
   };
   
   useEffect(() => {
@@ -196,7 +305,7 @@ function App() {
                     {isLoading ? 'Generating...' : 'Generate'}
                 </button>
             </div>
-            {error && <p className="text-red-400 mt-2 text-sm">{error}</p>}
+            {error && <p className="text-red-400 mt-2 text-sm whitespace-pre-line">{error}</p>}
           </div>
           <div className="flex-grow min-h-[300px]">
             <CodeEditor code={code} onChange={setCode} disabled={isSimulating} />
