@@ -3,14 +3,17 @@ export type ComponentType =
   | 'button'
   | 'potentiometer'
   | 'resistor'
-  | 'servo';
+  | 'servo'
+  | 'protoboard'
+  | 'buzzer'
+  | 'seven_segment_display';
 
 export interface ArduinoComponent {
   id: string;
   type: ComponentType;
   pin: number; // Main associated pin, can be a fallback
   label: string;
-  value?: number; // for potentiometers or servos (0-1023 for analog, 0-180 for servo)
+  value?: number | Record<string, boolean>; // for potentiometers, servos, or segment displays
   isOn?: boolean; // for LEDs
   isPressed?: boolean; // for buttons
   x?: number; // X position on the breadboard

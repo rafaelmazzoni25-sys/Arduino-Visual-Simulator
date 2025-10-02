@@ -29,6 +29,12 @@ void loop() {
 }
 `;
 
+/**
+ * Validates the circuit connections before simulation.
+ * @param components An array of components in the circuit.
+ * @param wires An array of wires connecting the components.
+ * @returns An array of error message strings. If the array is empty, the circuit is valid.
+ */
 const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[] => {
     const errors: string[] = [];
 
@@ -64,66 +70,106 @@ const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[
         return null;
     };
     
-    const isArduinoPin = (terminal: Terminal | null, type: 'digital' | 'analog' | 'gnd' | '5v') => {
+    const isArduinoPin = (terminal: Terminal | null, type: 'digital' | 'analog' | 'gnd' | '5v' | '3.3v') => {
         if (!terminal || terminal.componentId !== 'arduino') return false;
         
         const pinId = terminal.terminalId;
         if (type === 'gnd') return pinId.startsWith('gnd');
         if (type === '5v') return pinId === '5v';
+        if (type === '3.3v') return pinId === '3.3v';
         if (type === 'analog') return pinId.startsWith('A');
         
         if (type === 'digital') {
-            if (!pinId.startsWith('pin-')) return false;
+            if (pinId.startsWith('A')) return false; // Analog pins are not digital for this check
             const pinNum = parseInt(pinId.replace('pin-', ''));
             return !isNaN(pinNum) && pinNum >= 0 && pinNum <= 13;
         }
         return false;
     }
 
+    const validateLedConnection = (comp: ArduinoComponent) => {
+        const anodeTrace = traceToArduino({ componentId: comp.id, terminalId: 'anode' });
+        const cathodeTrace = traceToArduino({ componentId: comp.id, terminalId: 'cathode' });
+        if (!isArduinoPin(anodeTrace, 'digital') || !isArduinoPin(cathodeTrace, 'gnd')) {
+            errors.push(`LED "${comp.label}" must be connected to a digital pin (via a resistor) and a GND pin.`);
+        }
+    };
+
+    const validateButtonConnection = (comp: ArduinoComponent) => {
+        const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
+        const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
+        const isValid = (isArduinoPin(p1Trace, 'digital') && isArduinoPin(p2Trace, 'gnd')) || 
+                        (isArduinoPin(p2Trace, 'digital') && isArduinoPin(p1Trace, 'gnd'));
+        if (!isValid) {
+            errors.push(`Button "${comp.label}" must be connected between a digital pin and a GND pin.`);
+        }
+    };
+
+    const validatePotentiometerConnection = (comp: ArduinoComponent) => {
+        const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
+        const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
+        const p3Trace = traceToArduino({ componentId: comp.id, terminalId: 'p3' });
+
+        const wiperOk = isArduinoPin(p2Trace, 'analog');
+        const powerOk = (isArduinoPin(p1Trace, '5v') && isArduinoPin(p3Trace, 'gnd')) ||
+                        (isArduinoPin(p3Trace, '5v') && isArduinoPin(p1Trace, 'gnd'));
+
+        if (!wiperOk || !powerOk) {
+            errors.push(`Potentiometer "${comp.label}" must have its outer pins connected to 5V and GND, and the middle pin to an Analog pin (A0-A5).`);
+        }
+    };
+
+    const validateServoConnection = (comp: ArduinoComponent) => {
+        const signalTrace = traceToArduino({ componentId: comp.id, terminalId: 'signal' });
+        const vccTrace = traceToArduino({ componentId: comp.id, terminalId: 'vcc' });
+        const gndTrace = traceToArduino({ componentId: comp.id, terminalId: 'gnd' });
+
+        if (!isArduinoPin(signalTrace, 'digital') || !isArduinoPin(vccTrace, '5v') || !isArduinoPin(gndTrace, 'gnd')) {
+            errors.push(`Servo "${comp.label}" must have its signal pin connected to a digital pin, VCC to 5V, and GND to a GND pin.`);
+        }
+    };
+
+    const validateBuzzerConnection = (comp: ArduinoComponent) => {
+        const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
+        const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
+        const isValid = (isArduinoPin(p1Trace, 'digital') && isArduinoPin(p2Trace, 'gnd')) || 
+                        (isArduinoPin(p2Trace, 'digital') && isArduinoPin(p1Trace, 'gnd'));
+        if (!isValid) {
+            errors.push(`Buzzer "${comp.label}" must be connected between a digital pin and a GND pin.`);
+        }
+    };
+    
+    const validateSevenSegmentConnection = (comp: ArduinoComponent) => {
+        const terminals = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'dp', 'com'];
+        let hasError = false;
+        for (const terminalId of terminals) {
+            const trace = traceToArduino({ componentId: comp.id, terminalId });
+            if (terminalId === 'com') {
+                if (!isArduinoPin(trace, 'gnd')) {
+                    hasError = true;
+                    break;
+                }
+            } else {
+                if (!isArduinoPin(trace, 'digital')) {
+                    hasError = true;
+                    break;
+                }
+            }
+        }
+        if (hasError) {
+             errors.push(`7-Segment Display "${comp.label}" must have its common (com) pin connected to GND and all segment pins (a-g, dp) connected to digital pins.`);
+        }
+    };
+
     components.forEach(comp => {
         switch (comp.type) {
-            case 'led': {
-                const anodeTrace = traceToArduino({ componentId: comp.id, terminalId: 'anode' });
-                const cathodeTrace = traceToArduino({ componentId: comp.id, terminalId: 'cathode' });
-                if (!isArduinoPin(anodeTrace, 'digital') || !isArduinoPin(cathodeTrace, 'gnd')) {
-                    errors.push(`LED "${comp.label}" must be connected to a digital pin (via a resistor) and a GND pin.`);
-                }
-                break;
-            }
-            case 'button': {
-                const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
-                const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
-                const isValid = (isArduinoPin(p1Trace, 'digital') && isArduinoPin(p2Trace, 'gnd')) || 
-                                (isArduinoPin(p2Trace, 'digital') && isArduinoPin(p1Trace, 'gnd'));
-                if (!isValid) {
-                    errors.push(`Button "${comp.label}" must be connected between a digital pin and a GND pin.`);
-                }
-                break;
-            }
-            case 'potentiometer': {
-                const p1Trace = traceToArduino({ componentId: comp.id, terminalId: 'p1' });
-                const p2Trace = traceToArduino({ componentId: comp.id, terminalId: 'p2' });
-                const p3Trace = traceToArduino({ componentId: comp.id, terminalId: 'p3' });
-
-                const wiperOk = isArduinoPin(p2Trace, 'analog');
-                const powerOk = (isArduinoPin(p1Trace, '5v') && isArduinoPin(p3Trace, 'gnd')) ||
-                                (isArduinoPin(p3Trace, '5v') && isArduinoPin(p1Trace, 'gnd'));
-
-                if (!wiperOk || !powerOk) {
-                    errors.push(`Potentiometer "${comp.label}" must have its outer pins connected to 5V and GND, and the middle pin to an Analog pin (A0-A5).`);
-                }
-                break;
-            }
-            case 'servo': {
-                const signalTrace = traceToArduino({ componentId: comp.id, terminalId: 'signal' });
-                const vccTrace = traceToArduino({ componentId: comp.id, terminalId: 'vcc' });
-                const gndTrace = traceToArduino({ componentId: comp.id, terminalId: 'gnd' });
-
-                if (!isArduinoPin(signalTrace, 'digital') || !isArduinoPin(vccTrace, '5v') || !isArduinoPin(gndTrace, 'gnd')) {
-                    errors.push(`Servo "${comp.label}" must have its signal pin connected to a digital pin, VCC to 5V, and GND to a GND pin.`);
-                }
-                break;
-            }
+            case 'led': validateLedConnection(comp); break;
+            case 'button': validateButtonConnection(comp); break;
+            case 'potentiometer': validatePotentiometerConnection(comp); break;
+            case 'servo': validateServoConnection(comp); break;
+            case 'buzzer': validateBuzzerConnection(comp); break;
+            case 'seven_segment_display': validateSevenSegmentConnection(comp); break;
+            case 'protoboard': break; // Protoboards are visual and don't need electrical validation
         }
     });
 
@@ -138,7 +184,7 @@ function App() {
     { id: 'led-1', type: 'led', pin: 13, label: 'L LED', isOn: false, x: 100, y: 280 },
     { id: 'resistor-1', type: 'resistor', pin: 13, label: '220Ω Resistor', x: 250, y: 280 },
   ]);
-  const [arduinoPosition, setArduinoPosition] = useState<Point>({ x: 350, y: 50 });
+  const [arduinoPosition, setArduinoPosition] = useState<Point>({ x: 50, y: 20 });
   const [wires, setWires] = useState<Wire[]>([]);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [logs, setLogs] = useState<SerialLog[]>([]);
@@ -206,7 +252,7 @@ function App() {
         { id: 'led-1', type: 'led', pin: 13, label: 'L LED', isOn: false, x: 100, y: 280 },
         { id: 'resistor-1', type: 'resistor', pin: 13, label: '220Ω Resistor', x: 250, y: 280 },
     ]);
-    setArduinoPosition({ x: 350, y: 50 });
+    setArduinoPosition({ x: 50, y: 20 });
     setWires([]);
     setPrompt('');
     setError(null);
@@ -239,6 +285,7 @@ function App() {
         ...(type === 'button' && { isPressed: false }),
         ...(type === 'potentiometer' && { value: 0 }),
         ...(type === 'servo' && { value: 0 }),
+        ...(type === 'seven_segment_display' && { value: {} }),
     };
     setComponents(prev => [...prev, newComponent]);
   };

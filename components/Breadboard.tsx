@@ -6,6 +6,9 @@ import { ButtonIcon } from './icons/ButtonIcon';
 import { PotentiometerIcon } from './icons/PotentiometerIcon';
 import { ResistorIcon } from './icons/ResistorIcon';
 import { ServoIcon } from './icons/ServoIcon';
+import { ProtoBoardIcon } from './icons/ProtoBoardIcon';
+import { BuzzerIcon } from './icons/BuzzerIcon';
+import { SevenSegmentIcon } from './icons/SevenSegmentIcon';
 
 interface BreadboardProps {
   components: ArduinoComponent[];
@@ -27,13 +30,21 @@ const componentDimensions: Record<string, {width: number, height: number, termin
     button: { width: 50, height: 50, terminals: { p1: {x: 18, y: 40}, p2: {x: 32, y: 40} }},
     potentiometer: { width: 50, height: 50, terminals: { p1: {x: 15, y: 45}, p2: {x: 25, y: 45}, p3: {x: 35, y: 45} }},
     servo: { width: 60, height: 60, terminals: { gnd: {x: 20, y: 50}, vcc: {x: 30, y: 50}, signal: {x: 40, y: 50} }},
+    buzzer: { width: 40, height: 40, terminals: { p1: {x: 10, y: 40}, p2: {x: 30, y: 40} }},
+    seven_segment_display: { width: 50, height: 100, terminals: {
+        a: {x: 25, y: 0}, b: {x: 50, y: 25}, c: {x: 50, y: 75}, d: {x: 25, y: 100},
+        e: {x: 0, y: 75}, f: {x: 0, y: 25}, g: {x: 0, y: 50}, dp: {x: 50, y: 100},
+        com: {x: 25, y: 50} // A central common pin
+    }},
+    protoboard: { width: 200, height: 100, terminals: {} },
 };
 
 const getTerminalPosition = (terminal: Terminal, components: ArduinoComponent[], arduinoPosition: Point): Point | null => {
     if (terminal.componentId === 'arduino') {
         const pin = arduinoPins.find(p => p.id === terminal.terminalId);
         if (!pin) return null;
-        return { x: arduinoPosition.x + 50 + pin.x + 6, y: arduinoPosition.y + pin.y + 6 };
+        // The pin coordinates are relative to the Arduino SVG's top-left corner (0,0)
+        return { x: arduinoPosition.x + pin.x + 6, y: arduinoPosition.y + pin.y + 6 };
     }
 
     const component = components.find(c => c.id === terminal.componentId);
@@ -205,9 +216,15 @@ export const Breadboard: React.FC<BreadboardProps> = ({
       case 'button':
         return <g {...commonProps}><ButtonIcon isPressed={!!component.isPressed} width={dims.width} height={dims.height} />{terminals}</g>;
       case 'potentiometer':
-        return <g {...commonProps}><PotentiometerIcon value={component.value} width={dims.width} height={dims.height} />{terminals}</g>;
+        return <g {...commonProps}><PotentiometerIcon value={typeof component.value === 'number' ? component.value : 0} width={dims.width} height={dims.height} />{terminals}</g>;
       case 'servo':
-        return <g {...commonProps}><ServoIcon value={component.value} width={dims.width} height={dims.height} />{terminals}</g>;
+        return <g {...commonProps}><ServoIcon value={typeof component.value === 'number' ? component.value : 0} width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'buzzer':
+        return <g {...commonProps}><BuzzerIcon width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'seven_segment_display':
+        return <g {...commonProps}><SevenSegmentIcon segments={typeof component.value === 'object' ? component.value : {}} width={dims.width} height={dims.height} />{terminals}</g>;
+      case 'protoboard':
+        return <g {...commonProps}><ProtoBoardIcon width={dims.width} height={dims.height} /></g>;
       default:
         return null;
     }

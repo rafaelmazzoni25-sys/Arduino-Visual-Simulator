@@ -5,6 +5,9 @@ import { ButtonIcon } from './icons/ButtonIcon';
 import { PotentiometerIcon } from './icons/PotentiometerIcon';
 import { ResistorIcon } from './icons/ResistorIcon';
 import { ServoIcon } from './icons/ServoIcon';
+import { ProtoBoardIcon } from './icons/ProtoBoardIcon';
+import { BuzzerIcon } from './icons/BuzzerIcon';
+import { SevenSegmentIcon } from './icons/SevenSegmentIcon';
 
 const availableComponents: { type: ComponentType; name: string; icon: React.ReactNode }[] = [
     { type: 'led', name: 'LED', icon: <LedIcon isOn={false} className="w-10 h-10 mx-auto" /> },
@@ -12,6 +15,9 @@ const availableComponents: { type: ComponentType; name: string; icon: React.Reac
     { type: 'resistor', name: 'Resistor', icon: <ResistorIcon className="w-16 h-10 mx-auto" /> },
     { type: 'potentiometer', name: 'Potentiometer', icon: <PotentiometerIcon className="w-10 h-10 mx-auto" /> },
     { type: 'servo', name: 'Servo Motor', icon: <ServoIcon className="w-12 h-12 mx-auto" /> },
+    { type: 'buzzer', name: 'Buzzer', icon: <BuzzerIcon className="w-10 h-10 mx-auto" /> },
+    { type: 'seven_segment_display', name: '7-Segment', icon: <SevenSegmentIcon className="w-8 h-12 mx-auto" /> },
+    { type: 'protoboard', name: 'ProtoBoard', icon: <ProtoBoardIcon className="w-24 h-12 mx-auto" /> },
 ];
 
 const PaletteItem: React.FC<{ type: ComponentType, name: string, icon: React.ReactNode }> = ({ type, name, icon }) => {
