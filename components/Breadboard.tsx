@@ -43,7 +43,7 @@ const componentDimensions: Record<string, {width: number, height: number, termin
     led: { width: 50, height: 50, terminals: { anode: {x: 20, y: 50}, cathode: {x: 30, y: 50} }},
     resistor: { width: 100, height: 40, terminals: { p1: {x: 0, y: 20}, p2: {x: 100, y: 20} }},
     button: { width: 50, height: 50, terminals: { p1: {x: 18, y: 40}, p2: {x: 32, y: 40} }},
-    potentiometer: { width: 50, height: 50, terminals: { p1: {x: 20, y: 50}, p2: {x: 25, y: 50}, p3: {x: 30, y: 50} }},
+    potentiometer: { width: 50, height: 60, terminals: { p1: {x: 15, y: 60}, p2: {x: 25, y: 60}, p3: {x: 35, y: 60} }},
     servo: { width: 60, height: 60, terminals: { gnd: {x: 20, y: 55}, vcc: {x: 30, y: 55}, signal: {x: 40, y: 55} }},
     buzzer: { width: 40, height: 40, terminals: { p1: {x: 10, y: 40}, p2: {x: 30, y: 40} }},
     seven_segment_display: { width: 50, height: 100, terminals: {
@@ -142,6 +142,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
 }) => {
   const [drawingWire, setDrawingWire] = useState<{ start: Terminal; end: Point } | null>(null);
   const [draggingInfo, setDraggingInfo] = useState<{ id: string; type: 'component' | 'arduino'; offset: Point } | null>(null);
+  const [adjustingComponent, setAdjustingComponent] = useState<{ id: string, type: 'potentiometer', startX: number, startValue: number } | null>(null);
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -263,8 +264,6 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   }
 
   const handleMouseMove = (e: MouseEvent) => {
-    const point = getSVGPoint(e);
-
     if (isPanning) {
         setView(prev => ({
             ...prev,
@@ -273,6 +272,16 @@ export const Breadboard: React.FC<BreadboardProps> = ({
         }));
         return;
     }
+
+    if (adjustingComponent) {
+        const sensitivity = 5; // Higher number means less sensitive
+        let newValue = (typeof adjustingComponent.startValue === 'number' ? adjustingComponent.startValue : 0) + e.movementX * sensitivity;
+        newValue = Math.max(0, Math.min(1023, Math.round(newValue)));
+        onComponentUpdate(adjustingComponent.id, { value: newValue });
+        return;
+    }
+
+    const point = getSVGPoint(e);
 
     if (drawingWire) {
       setDrawingWire({ ...drawingWire, end: point });
@@ -294,6 +303,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({
     setDrawingWire(null);
     setDraggingInfo(null);
     setIsPanning(false);
+    setAdjustingComponent(null);
   };
 
   const handlePinMouseEnter = (e: React.MouseEvent, pin: Pin) => {
@@ -314,13 +324,28 @@ export const Breadboard: React.FC<BreadboardProps> = ({
   };
 
   const renderComponent = (component: ArduinoComponent) => {
-    const commonProps = {
+    let commonProps: any = {
         key: component.id,
-        onMouseDown: (e: MouseEvent) => handleMouseDownOnComponent(e, component.id),
         onDoubleClick: () => onComponentDoubleClick(component.id),
-        className: `cursor-grab ${isSimulating ? 'cursor-not-allowed' : ''}`,
         transform: `translate(${component.x || 0}, ${component.y || 0})`
     };
+
+    if (isSimulating && component.type === 'potentiometer') {
+        commonProps.onMouseDown = (e: MouseEvent) => {
+            e.stopPropagation();
+            setAdjustingComponent({
+                id: component.id,
+                type: 'potentiometer',
+                startX: e.clientX,
+                startValue: typeof component.value === 'number' ? component.value : 0,
+            });
+        };
+        commonProps.className = 'cursor-ew-resize';
+    } else {
+        commonProps.onMouseDown = (e: MouseEvent) => handleMouseDownOnComponent(e, component.id);
+        commonProps.className = `cursor-grab ${isSimulating ? 'cursor-not-allowed' : ''}`;
+    }
+
 
     const terminalRadius = component.type === 'protoboard' ? 2 : 6;
     const TerminalCircle = ({ terminalId, cx, cy }: { terminalId: string, cx: number, cy: number }) => (

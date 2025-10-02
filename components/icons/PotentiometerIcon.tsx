@@ -10,23 +10,29 @@ export const PotentiometerIcon: React.FC<PotentiometerIconProps> = ({ value = 51
 
   return (
     <svg 
-      viewBox="0 0 50 50" 
+      viewBox="0 0 50 60" 
       className={className} 
       {...props}
     >
       {/* Base */}
-      <circle cx="25" cy="25" r="15" fill="#71717a" stroke="#a1a1aa" strokeWidth="2" />
-      <circle cx="25" cy="25" r="12" fill="#3f3f46" />
-
-      {/* Knob Indicator */}
+      <rect x="5" y="5" width="40" height="40" rx="5" fill="#3b82f6" stroke="#1e40af" strokeWidth="1" />
+      
+      {/* Knob */}
+      <circle cx="25" cy="25" r="12" fill="#e5e7eb" />
+      <circle cx="25" cy="25" r="10" fill="#f8fafc" stroke="#9ca3af" strokeWidth="0.5" />
+      
+      {/* Knob Indicator (screw head) */}
       <g transform={`rotate(${rotation} 25 25)`}>
-        <line x1="25" y1="25" x2="25" y2="15" stroke="#67e8f9" strokeWidth="2" strokeLinecap="round" />
+        <rect x="24" y="17" width="2" height="16" rx="1" fill="#9ca3af" />
+        <rect x="17" y="24" width="16" height="2" rx="1" fill="#9ca3af" />
       </g>
 
       {/* Pins */}
-      <path d="M15 40 v5" stroke="#a1a1aa" strokeWidth="2" />
-      <path d="M25 40 v5" stroke="#a1a1aa" strokeWidth="2" />
-      <path d="M35 40 v5" stroke="#a1a1aa" strokeWidth="2" />
+      <g stroke="#a1a1aa" strokeWidth="2">
+        <path d="M15 45 v15" />
+        <path d="M25 45 v15" />
+        <path d="M35 45 v15" />
+      </g>
     </svg>
   );
 };
