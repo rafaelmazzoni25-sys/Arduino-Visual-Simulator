@@ -105,14 +105,26 @@ const getTerminalPosition = (terminal: Terminal, components: ArduinoComponent[],
 
 /**
  * Generates an SVG path string for a clean, U-shaped orthogonal wire.
+ * It intelligently chooses between H-V-H and V-H-V routing.
  * @param startPos The starting point of the wire.
  * @param endPos The ending point of the wire.
  * @returns An SVG path data string.
  */
 const getOrthogonalPath = (startPos: Point, endPos: Point): string => {
-  const midX = startPos.x + (endPos.x - startPos.x) / 2;
-  // Creates a path that goes: Move -> Horizontal -> Vertical -> Horizontal
-  return `M ${startPos.x} ${startPos.y} H ${midX} V ${endPos.y} H ${endPos.x}`;
+  const dx = endPos.x - startPos.x;
+  const dy = endPos.y - startPos.y;
+
+  // Choose between H-V-H and V-H-V based on which direction is "longer"
+  // This creates more natural-looking U-bends.
+  if (Math.abs(dx) < Math.abs(dy)) {
+    // More vertical distance, so go Horizontal-Vertical-Horizontal
+    const midX = startPos.x + dx / 2;
+    return `M ${startPos.x},${startPos.y} H ${midX} V ${endPos.y} H ${endPos.x}`;
+  } else {
+    // More horizontal distance, so go Vertical-Horizontal-Vertical
+    const midY = startPos.y + dy / 2;
+    return `M ${startPos.x},${startPos.y} V ${midY} H ${endPos.x} V ${endPos.y}`;
+  }
 };
 
 
