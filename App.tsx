@@ -211,6 +211,49 @@ const validateCircuit = (components: ArduinoComponent[], wires: Wire[]): string[
                 errors.push(`Servo "${comp.label}" must have its signal pin connected to a digital pin, VCC to 5V, and GND to a GND pin.`);
             }
         }
+        if (comp.type === 'buzzer') {
+            const p1NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p1' }));
+            const p2NetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'p2' }));
+            if (!p1NetId || !p2NetId) { errors.push(`Buzzer "${comp.label}" is not fully connected.`); return; }
+
+            const p1Net = netContents.get(p1NetId) || [];
+            const p2Net = netContents.get(p2NetId) || [];
+
+            const p1ToDigital = p1Net.some(t => isArduinoPin(t, 'digital'));
+            const p2ToGnd = p2Net.some(t => isArduinoPin(t, 'gnd'));
+            const p1ToGnd = p1Net.some(t => isArduinoPin(t, 'gnd'));
+            const p2ToDigital = p2Net.some(t => isArduinoPin(t, 'digital'));
+            
+            if (!((p1ToDigital && p2ToGnd) || (p2ToDigital && p1ToGnd))) {
+                errors.push(`Buzzer "${comp.label}" must be connected between a digital pin and a GND pin.`);
+            }
+        }
+        if (comp.type === 'seven_segment_display') {
+            const comNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: 'com' }));
+            if (comNetId) {
+                const comNet = netContents.get(comNetId) || [];
+                if (!comNet.some(t => isArduinoPin(t, 'gnd'))) {
+                    errors.push(`7-Segment Display "${comp.label}" common pin must be connected to a GND pin (assuming common cathode).`);
+                }
+            } else {
+                 const isAnyOtherPinWired = Object.keys(comp.value || {})
+                    .some(termId => termId !== 'com' && terminalToNetId.has(terminalKey({ componentId: comp.id, terminalId: termId })));
+                if (isAnyOtherPinWired) {
+                    errors.push(`7-Segment Display "${comp.label}" common pin ('com') must be connected.`);
+                }
+            }
+
+            const segmentTerminals = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'dp'];
+            for (const term of segmentTerminals) {
+                const segNetId = terminalToNetId.get(terminalKey({ componentId: comp.id, terminalId: term }));
+                if (segNetId) {
+                    const segNet = netContents.get(segNetId) || [];
+                    if (!segNet.some(t => isArduinoPin(t, 'digital'))) {
+                        errors.push(`Segment '${term}' of 7-Segment Display "${comp.label}" is connected, but not to a digital pin.`);
+                    }
+                }
+            }
+        }
     });
 
     return errors;
