@@ -6,7 +6,7 @@ import { Controls } from './components/Controls';
 import { ComponentPalette } from './components/ComponentPalette';
 import { EditComponentModal } from './components/EditComponentModal';
 import { ArduinoComponent, SerialLog, ComponentType, Wire, Point, Terminal } from './types';
-import { generateCodeFromPrompt } from './services/geminiService';
+import { generateSolutionFromPrompt } from './services/geminiService';
 
 const DEFAULT_CODE = `/*
   Blink
@@ -337,6 +337,7 @@ function App() {
   const [logs, setLogs] = useState<SerialLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [wiringInstructions, setWiringInstructions] = useState<string | null>(null);
   const [editingComponent, setEditingComponent] = useState<ArduinoComponent | null>(null);
   const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const simulationStartTimeRef = useRef<number | null>(null);
@@ -413,6 +414,7 @@ function App() {
     setWires([]);
     setPrompt('');
     setError(null);
+    setWiringInstructions(null);
     simulationStartTimeRef.current = null;
   };
 
@@ -420,11 +422,13 @@ function App() {
     if (!prompt) return;
     setIsLoading(true);
     setError(null);
+    setWiringInstructions(null);
     try {
-        const generatedCode = await generateCodeFromPrompt(prompt, components, wires);
-        setCode(generatedCode);
+        const solution = await generateSolutionFromPrompt(prompt, components, wires);
+        setCode(solution.code);
+        setWiringInstructions(solution.wiring);
     } catch (e) {
-        setError("Failed to generate code. Please try again.");
+        setError("Failed to generate solution. Please try again.");
         console.error(e);
     } finally {
         setIsLoading(false);
@@ -492,7 +496,7 @@ function App() {
         <div className="lg:col-span-5 flex flex-col gap-4 min-h-0">
           <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700 shadow-lg">
             <h2 className="text-xl font-bold text-cyan-400 mb-2">1. Describe Your Logic</h2>
-            <p className="text-sm text-slate-400 mb-4">Tell the AI what you want the Arduino to do. It will generate the code for you.</p>
+            <p className="text-sm text-slate-400 mb-4">Tell the AI what you want the Arduino to do. It will generate the code and wiring instructions for you.</p>
             <div className="flex gap-2">
                 <input
                     type="text"
@@ -511,6 +515,14 @@ function App() {
                 </button>
             </div>
             {error && <p className="text-red-400 mt-2 text-sm whitespace-pre-line">{error}</p>}
+             {wiringInstructions && (
+                <div className="mt-4 p-4 bg-slate-900/50 border border-slate-700 rounded-md max-h-48 overflow-y-auto">
+                    <h3 className="text-lg font-bold text-amber-400 mb-2">Wiring Instructions</h3>
+                    <div className="text-slate-300 text-sm whitespace-pre-line">
+                        {wiringInstructions}
+                    </div>
+                </div>
+            )}
           </div>
           <div className="flex-grow min-h-[300px]">
             <CodeEditor code={code} onChange={setCode} disabled={isSimulating} />

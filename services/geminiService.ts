@@ -35,59 +35,77 @@ const describeCircuit = (components: ArduinoComponent[], wires: Wire[]): string 
 
 
 /**
- * Generates Arduino C++ code from a user prompt using the Gemini API.
+ * Generates Arduino C++ code and wiring instructions from a user prompt using the Gemini API.
  * @param prompt - The user's description of the desired logic.
  * @param components - Array of components on the breadboard.
  * @param wires - Array of wires connecting the components.
- * @returns A promise that resolves to the generated Arduino code as a string.
+ * @returns A promise that resolves to an object containing the wiring instructions and the generated code.
  */
-export const generateCodeFromPrompt = async (prompt: string, components: ArduinoComponent[], wires: Wire[]): Promise<string> => {
+export const generateSolutionFromPrompt = async (
+    prompt: string, 
+    components: ArduinoComponent[], 
+    wires: Wire[]
+): Promise<{ wiring: string; code: string; }> => {
     try {
         const circuitDescription = describeCircuit(components, wires);
         const componentList = components.map(c => `${c.label} (${c.type})`).join(', ') || 'none';
 
         const fullPrompt = `
-You are an expert Arduino programmer.
-Your task is to generate a complete, compilable Arduino C++ code snippet for an Arduino Uno board.
-The code should be ready to compile in the Arduino IDE.
+You are an expert Arduino programmer and electronics tutor.
+Your task is to provide a complete solution for an Arduino Uno project based on the user's request.
 
-The user has the following components available: ${componentList}.
-The components are wired as follows: ${circuitDescription}.
+The user has the following components available on their virtual workbench: ${componentList}.
+The current wiring on the workbench is as follows: "${circuitDescription}". An empty description means nothing is wired.
 
 Based on this setup, the user's request is: "${prompt}".
 
-IMPORTANT INSTRUCTIONS:
-1.  ONLY generate the C++ code for the .ino file.
-2.  Wrap the entire code in a single markdown block like this: \`\`\`cpp ... \`\`\`
-3.  Do NOT include any explanations, comments about the code, or any text outside of the markdown block.
-4.  The code must be complete and self-contained.
-5.  Infer pin assignments from the wiring description. For example, if an LED's anode is connected to pin 13, then that LED is on pin 13.
+Please provide a two-part response:
+1.  **Wiring Instructions:** A clear, step-by-step guide on how to wire the necessary components to achieve the user's goal. Base the instructions on the available components. If the user has already wired components, you can acknowledge the existing wiring and provide instructions for any missing or incorrect connections. If the circuit is empty or the wiring is irrelevant to the prompt, provide a complete, step-by-step guide. Be specific about pin numbers (e.g., "Connect the LED's long leg (anode) to digital pin 13.").
+2.  **Arduino Code:** A complete, compilable Arduino C++ code snippet for the .ino file that implements the user's logic.
+
+FORMATTING REQUIREMENTS:
+- Use the exact markdown headings \`### Wiring Instructions\` and \`### Arduino Code\`.
+- For the code, wrap the entire C++ code in a single markdown block like this: \`\`\`cpp ... \`\`\`
+- Provide clear and simple language for the wiring instructions, using bullet points or a numbered list.
 `;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: fullPrompt,
             config: {
-                temperature: 0.1, // Lower temperature for more deterministic code generation
+                temperature: 0.1,
             }
         });
 
         const text = response.text;
-        const codeBlockRegex = /```(?:cpp|c\+\+)?\s*([\s\S]*?)\s*```/;
-        const match = text.match(codeBlockRegex);
+        
+        // Extract Wiring Instructions
+        const wiringRegex = /### Wiring Instructions\s*([\s\S]*?)(?=### Arduino Code|$)/;
+        const wiringMatch = text.match(wiringRegex);
+        const wiring = wiringMatch && wiringMatch[1] ? wiringMatch[1].trim() : "Could not generate wiring instructions.";
 
-        if (match && match[1]) {
-            return match[1].trim();
+        // Extract Arduino Code
+        const codeRegex = /### Arduino Code\s*```(?:cpp|c\+\+)?\s*([\s\S]*?)\s*```/;
+        const codeMatch = text.match(codeRegex);
+        let code = codeMatch && codeMatch[1] ? codeMatch[1].trim() : `// Could not generate code. Please check your prompt and circuit.\nvoid setup() {}\nvoid loop() {}`;
+        
+        // Fallback for code if the main regex fails but a code block exists somewhere
+        if (code.startsWith('// Could not generate code')) {
+             const fallbackCodeRegex = /```(?:cpp|c\+\+)?\s*([\s\S]*?)\s*```/;
+             const fallbackMatch = text.match(fallbackCodeRegex);
+             if (fallbackMatch && fallbackMatch[1]) {
+                code = fallbackMatch[1].trim();
+             }
         }
 
-        // Fallback if no markdown block is found
-        return text.trim();
+        return { wiring, code };
 
     } catch (error) {
-        console.error("Error generating Arduino code:", error);
-        if (error instanceof Error) {
-            return `// Error generating code: ${error.message}\nvoid setup() {}\nvoid loop() {}`;
-        }
-        return `// An unknown error occurred.\nvoid setup() {}\nvoid loop() {}`;
+        console.error("Error generating Arduino solution:", error);
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+        return {
+            wiring: `// Error generating instructions: ${errorMessage}`,
+            code: `// Error generating code: ${errorMessage}\nvoid setup() {}\nvoid loop() {}`
+        };
     }
 };
